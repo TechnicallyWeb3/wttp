@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {TypeMap, TypeCategory} from "./TypeMap.sol";
 import {StatusMap} from "./StatusMap.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 struct DataPointStructure {
     bytes2 mimeType;
@@ -39,6 +40,12 @@ contract DataPointStorage {
     // mapping(bytes32 => bytes) public dataPointContents;
     // mapping(bytes32 => DataPointStructure) public dataPointStructures;
     mapping(bytes32 => DataPoint) private dataPoints;
+
+    function calculateAddress(
+        DataPoint memory _dataPoint
+    ) public pure returns (bytes32) {
+        return getDataPointAddress(_dataPoint);
+    }
 
     function writeDataPoint(
         DataPoint memory _dataPoint
@@ -189,11 +196,15 @@ contract DataPointRegistry {
 }
 
 abstract contract WebRegistry is Ownable {
-    TypeMap private TYPE_MAP_;
-    DataPointRegistry private DPR_;
-    DataPointStorage private DPS_;
+    TypeMap internal TYPE_MAP_;
+    DataPointRegistry internal DPR_;
+    DataPointStorage internal DPS_;
 
-    constructor(address _typeMap, address _dpr) {
+    constructor(
+        address _typeMap,
+        address _dpr,
+        address _owner
+    ) Ownable(_owner) {
         TYPE_MAP_ = TypeMap(_typeMap);
         DPR_ = DataPointRegistry(_dpr);
         DPS_ = DPR_.DPS_();
@@ -236,63 +247,73 @@ abstract contract WebRegistry is Ownable {
         return _admin == owner() || admins[_admin];
     }
 
-    struct WebFileMetadata {
+    struct ResourceMetadata {
         uint256 size;
         uint256 version;
+        uint256 modifiedDate;
         bool isImmutable;
     }
 
-    mapping(string => WebFileMetadata) private webFileMetadata;
-    mapping(string => bytes32[]) private webFiles;
+    mapping(string => ResourceMetadata) private resourceMetadata;
+    mapping(string => bytes32[]) private resources;
 
-    function _writeWebFile(
+    function _MAX_RESOURCE_SIZE() internal view virtual returns (uint256) {
+        return 128000; // 128KB
+    }
+
+    function _writeResource(
         string memory _path,
         uint256 _chunk,
         DataPoint memory _dataPoint,
         address _publisher
     ) internal virtual returns (bytes32 dataPointAddress) {
         require(
-            !webFileMetadata[_path].isImmutable,
+            !resourceMetadata[_path].isImmutable,
             "WS: Web file is immutable"
         );
         require(
-            _chunk <= webFiles[_path].length,
+            _chunk <= resources[_path].length,
             "WS: Chunk index out of bounds"
+        );
+        require(
+            _dataPoint.data.length <= _MAX_RESOURCE_SIZE(),
+            "WS: Data point too large"
         );
 
         // initialize to the original file size
-        uint256 newFileSize = webFileMetadata[_path].size;
+        uint256 newResourceSize = resourceMetadata[_path].size;
 
         dataPointAddress = DPR_.writeDataPoint(_dataPoint, _publisher);
 
-        if (_chunk == webFiles[_path].length) {
-            webFiles[_path].push(dataPointAddress);
-            newFileSize += _dataPoint.data.length;
+        if (_chunk == resources[_path].length) {
+            resources[_path].push(dataPointAddress);
+            newResourceSize += _dataPoint.data.length;
         } else {
             uint256 originalChunkSize = DPS_
-                .dataPointInfo(webFiles[_path][_chunk])
+                .dataPointInfo(resources[_path][_chunk])
                 .size;
-            newFileSize =
-                newFileSize -
+            newResourceSize =
+                newResourceSize -
                 originalChunkSize +
                 _dataPoint.data.length;
-            webFiles[_path][_chunk] = dataPointAddress;
+            resources[_path][_chunk] = dataPointAddress;
         }
 
-        webFileMetadata[_path].size = newFileSize;
-        webFileMetadata[_path].version++;
+        resourceMetadata[_path].size = newResourceSize;
+        resourceMetadata[_path].version++;
+        resourceMetadata[_path].modifiedDate = block.timestamp;
     }
 
-    function createWebFile(
+    function _createResource(
         string memory _path,
         string memory _mimeType,
         string memory _encoding,
         string memory _location,
         address _publisher,
         bytes memory _data
-    ) public payable virtual onlyOwner {
+    ) internal virtual onlyOwner returns (bytes32) {
         require(bytes(_path).length > 0, "WS: Invalid path");
-        require(webFiles[_path].length == 0, "WS: Web file already exists");
+        require(resources[_path].length == 0, "WS: Web file already exists");
 
         bytes2 mimeType = TYPE_MAP_.getTypeBytes(
             TypeCategory.MIME_TYPE,
@@ -316,31 +337,32 @@ abstract contract WebRegistry is Ownable {
             data: _data
         });
 
-        _writeWebFile(_path, 0, _dataPoint, _publisher);
+        return _writeResource(_path, 0, _dataPoint, _publisher);
     }
 
-    function deletePath(string memory _path) public virtual onlyOwner {
-        require(webFiles[_path].length > 0, "WS: Web file does not exist");
+    function _deleteResource(string memory _path) internal virtual onlyOwner {
+        require(resources[_path].length > 0, "WS: Web file does not exist");
         require(
-            !webFileMetadata[_path].isImmutable,
+            !resourceMetadata[_path].isImmutable,
             "WS: Web file is immutable"
         );
-        webFileMetadata[_path].version++;
-        webFileMetadata[_path].size = 0;
-        delete webFiles[_path];
+        resourceMetadata[_path].version++;
+        resourceMetadata[_path].size = 0;
+        resourceMetadata[_path].modifiedDate = block.timestamp;
+        delete resources[_path];
     }
 
-    function updateWebFile(
+    function _updateResource(
         string memory _path,
         bytes memory _data,
         uint256 _chunk,
         address _publisher
-    ) public payable virtual onlyOwner {
+    ) internal virtual onlyOwner returns (bytes32) {
         require(bytes(_path).length > 0, "WS: Invalid path");
-        bytes32[] storage fileData = webFiles[_path];
+        bytes32[] storage fileData = resources[_path];
         require(fileData.length > 0, "WS: Web file does not exist");
 
-        bytes32 firstAddress = webFiles[_path][0];
+        bytes32 firstAddress = resources[_path][0];
         DataPointStructure memory firstStructure = DPS_
             .readDataPoint(firstAddress)
             .structure;
@@ -353,24 +375,26 @@ abstract contract WebRegistry is Ownable {
             data: _data
         });
 
-        _writeWebFile(_path, _chunk, _dataPoint, _publisher);
+        return _writeResource(_path, _chunk, _dataPoint, _publisher);
     }
 
-    function makeFileImmutable(string memory _path) public virtual onlyOwner {
-        require(webFiles[_path].length > 0, "WS: Web file does not exist");
-        webFileMetadata[_path].isImmutable = true;
+    function makeResourceImmutable(
+        string memory _path
+    ) public virtual onlyOwner {
+        require(resources[_path].length > 0, "WS: Web file does not exist");
+        resourceMetadata[_path].isImmutable = true;
     }
 
-    function readWebFile(
+    function getResourceData(
         string memory _path
     ) public view returns (bytes32[] memory) {
-        return webFiles[_path];
+        return resources[_path];
     }
 
-    function getFileInfo(
+    function getResourceInfo(
         string memory _path
-    ) public view returns (WebFileMetadata memory) {
-        return webFileMetadata[_path];
+    ) public view returns (ResourceMetadata memory) {
+        return resourceMetadata[_path];
     }
 
     /// @dev Emitted when an admin is added
@@ -383,70 +407,297 @@ abstract contract WebRegistry is Ownable {
 contract WebServer is WebRegistry {
     StatusMap private STATUS_MAP_;
 
-    enum WTTPMethod {
-        GET,
-        POST,
-        PUT,
-        DELETE
+        // Struct to hold Cache-Control settings
+    struct CacheControl {
+        uint256 maxAge;         // max-age directive in seconds (0 if not set)
+        uint256 sMaxage;        // s-maxage directive in seconds (0 if not set)
+        bool noStore;           // no-store directive
+        bool noCache;           // no-cache directive
+        bool immutableFlag;     // immutable directive
+        bool mustRevalidate;    // must-revalidate directive
+        bool proxyRevalidate;   // proxy-revalidate directive
+        uint256 staleWhileRevalidate; // stale-while-revalidate directive in seconds (0 if not set)
+        uint256 staleIfError;       // stale-if-error directive in seconds (0 if not set)
+        bool publicFlag;        // public directive
+        bool privateFlag;      // private directive
     }
+
+    struct AllowedMethods {
+        bool GET;
+        bool HEAD;
+        bool PUT;
+        bool PATCH;
+        bool DELETE;
+    }
+
+    struct HeaderInfo {
+        CacheControl cache;
+        AllowedMethods allowed;
+    }
+
+    mapping(string => HeaderInfo) private headers;
 
     constructor(
         address _statusMap,
         address _typeMap,
         address _dpr,
         address _owner
-    ) WebRegistry(_typeMap, _dpr) Ownable(_owner) {
+    ) WebRegistry(_typeMap, _dpr, _owner) {
         STATUS_MAP_ = StatusMap(_statusMap);
     }
 
-    struct WTTPRequestLine {
-        WTTPMethod method;
-        string path;
-        uint256 version;
+    function _assembleCacheControl(
+        CacheControl memory _cache
+    ) internal pure returns (string memory) {
+        string memory cacheControl;
+        string memory delimiter;
+        if (_cache.maxAge > 0) {
+            cacheControl = string.concat("max-age=", Strings.toString(_cache.maxAge));
+        }
+        if (_cache.sMaxage > 0) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, delimiter, "s-maxage=", Strings.toString(_cache.sMaxage));
+        }
+        if (_cache.noStore) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, delimiter, "no-store");
+        }
+        if (_cache.noCache) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, delimiter, "no-cache");
+        }
+        if (_cache.immutableFlag) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, ", immutable");
+        }
+        if (_cache.mustRevalidate) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, delimiter, "must-revalidate");
+        }
+        if (_cache.proxyRevalidate) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, ", proxy-revalidate");
+        }
+        if (_cache.staleWhileRevalidate > 0) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, delimiter, "stale-while-revalidate=", Strings.toString(_cache.staleWhileRevalidate));
+        }
+        if (_cache.staleIfError > 0) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, ", stale-if-error=", Strings.toString(_cache.staleIfError));
+        }
+        if (_cache.publicFlag) {
+            delimiter = bytes(cacheControl).length > 0 ? ", " : "";
+            cacheControl = string.concat(cacheControl, delimiter, "public");
+        }
+        return cacheControl;
     }
 
-    struct WTTPHeader {
-        string mimeType;
-        string encoding;
-        string location;
-        uint256 chunk;
-        address publisher;
-        string httpHeader;
+    function _assembleAllowedMethods(
+        AllowedMethods memory _allowed
+    ) internal pure returns (string memory) {
+        string memory allowedMethods;
+        string memory delimiter;
+        if (_allowed.GET) {
+            allowedMethods = string.concat(allowedMethods, "GET");
+        }   
+        if (_allowed.HEAD) {
+            delimiter = bytes(allowedMethods).length > 0 ? ", " : "";
+            allowedMethods = string.concat(allowedMethods, delimiter, "HEAD");
+        }
+        if (_allowed.PUT) {
+            delimiter = bytes(allowedMethods).length > 0 ? ", " : "";
+            allowedMethods = string.concat(allowedMethods, delimiter, "PUT");
+        }
+        if (_allowed.PATCH) {
+            delimiter = bytes(allowedMethods).length > 0 ? ", " : "";
+            allowedMethods = string.concat(allowedMethods, delimiter, "PATCH");
+        }
+        if (_allowed.DELETE) {
+            delimiter = bytes(allowedMethods).length > 0 ? ", " : "";
+            allowedMethods = string.concat(allowedMethods, delimiter, "DELETE");
+        }
+        return allowedMethods;
     }
 
-    struct WTTPBody {
-        bytes data;
+    function _assembleHeader(
+        string memory _path
+    ) internal view returns (string memory) {
+        HeaderInfo memory header = headers[_path];
+        string memory headerData = "";
+        string memory cacheData = _assembleCacheControl(header.cache);
+        if (bytes(cacheData).length > 0) {
+            headerData = string.concat(headerData, "Cache-Control: ", cacheData, "\n");
+        }
+        string memory allowedMethods = _assembleAllowedMethods(header.allowed);
+        if (bytes(allowedMethods).length > 0) {
+            headerData = string.concat(headerData, "Allow: ", allowedMethods, "\n");
+        }
+        return headerData;
     }
 
-    function WTTPRequest(
-        WTTPRequestLine memory _requestLine,
-        WTTPHeader memory _header,
+    function _assembleData(
+        string memory _path,
+        uint256 startIndex,
+        uint256 endIndex
+    ) internal view virtual returns (bytes memory) {
+        uint256 resourceSize = getResourceInfo(_path).size;
+        require(startIndex < resourceSize, "WS: Invalid start index");
+        require(
+            endIndex == 0 || endIndex > startIndex,
+            "WS: Invalid end index"
+        );
+
+        bytes32[] memory resourceData = getResourceData(_path);
+
+        uint256 startChunk;
+        uint256 accumulatedSize;
+
+        // Find the starting chunk
+        while (
+            startChunk < resourceData.length &&
+            accumulatedSize +
+                DPS_.readDataPoint(resourceData[startChunk]).data.length <=
+            startIndex
+        ) {
+            accumulatedSize += DPS_
+                .readDataPoint(resourceData[startChunk])
+                .data
+                .length;
+            startChunk++;
+        }
+
+        bytes memory assembledData = new bytes(0);
+
+        // Assemble data from the starting chunk
+        for (uint256 i = startChunk; i < resourceData.length; i++) {
+            bytes memory chunkData = DPS_.readDataPoint(resourceData[i]).data;
+            uint256 bytesToAdd = chunkData.length;
+
+            if (i == startChunk) {
+                uint256 offset = startIndex - accumulatedSize;
+                if (offset > 0) {
+                    chunkData = _sliceBytes(
+                        chunkData,
+                        offset,
+                        chunkData.length
+                    );
+                }
+                bytesToAdd = chunkData.length;
+            }
+
+            if (endIndex > 0 && accumulatedSize + bytesToAdd > endIndex) {
+                // If we've reached or exceeded the end index, slice the chunk and return
+                uint256 remainingBytes = endIndex - accumulatedSize;
+                chunkData = _sliceBytes(chunkData, 0, remainingBytes);
+                return abi.encodePacked(assembledData, chunkData);
+            }
+
+            if (assembledData.length + bytesToAdd > _MAX_RESOURCE_SIZE()) {
+                // If adding this chunk would exceed the limit, return the currently assembled data
+                return assembledData;
+            }
+
+            assembledData = abi.encodePacked(assembledData, chunkData);
+            accumulatedSize += bytesToAdd;
+
+            if (endIndex > 0 && accumulatedSize == endIndex) {
+                // If we've reached the exact end index, return the assembled data
+                return assembledData;
+            }
+
+            if (assembledData.length == _MAX_RESOURCE_SIZE()) {
+                // If we've reached the exact limit, return the assembled data
+                return assembledData;
+            }
+        }
+
+        return assembledData;
+    }
+
+    function _sliceBytes(
+        bytes memory data,
+        uint256 start,
+        uint256 end
+    ) private pure returns (bytes memory) {
+        bytes memory result = new bytes(end - start);
+        for (uint256 i = 0; i < end - start; i++) {
+            result[i] = data[i + start];
+        }
+        return result;
+    }
+
+    function HEAD(
+        string memory _path
+    ) public view returns (ResourceMetadata memory) {
+        return getResourceInfo(_path);
+    }
+
+    function GET(string memory _path) public view returns (bytes32[] memory) {
+        return getResourceData(_path);
+    }
+
+    function PUT(
+        string memory _path,
+        string memory _mimeType,
+        string memory _encoding,
+        string memory _location,
+        address _publisher,
         bytes memory _data
-    ) public payable returns (bytes32[] memory) {
-        if (_requestLine.method == WTTPMethod.GET) {
-            return readWebFile(_requestLine.path);
-        } else if (_requestLine.method == WTTPMethod.POST) {
-            createWebFile(
-                _requestLine.path,
-                _header.mimeType,
-                _header.encoding,
-                _header.location,
-                _header.publisher,
+    ) public payable returns (bytes32) {
+        return
+            _createResource(
+                _path,
+                _mimeType,
+                _encoding,
+                _location,
+                _publisher,
                 _data
             );
-            return readWebFile(_requestLine.path);
-        } else if (_requestLine.method == WTTPMethod.PUT) {
-            updateWebFile(
-                _requestLine.path,
-                _data,
-                _header.chunk,
-                _header.publisher
-            );
-            return readWebFile(_requestLine.path);
-        } else if (_requestLine.method == WTTPMethod.DELETE) {
-            deletePath(_requestLine.path);
-            return new bytes32[](0);
-        }
-        revert("Invalid WTTP method");
     }
+
+    function PATCH(
+        string memory _path,
+        bytes memory _data,
+        uint256 _chunk,
+        address _publisher
+    ) public payable returns (bytes32) {
+        return _updateResource(_path, _data, _chunk, _publisher);
+    }
+
+    function DELETE(string memory _path) public virtual {
+        _deleteResource(_path);
+    }
+
+    // function WTTPRequest(
+    //     WTTPRequestLine memory _requestLine,
+    //     WTTPHeader memory _header,
+    //     bytes memory _data
+    // ) public payable returns (bytes32[] memory) {
+    //     if (_requestLine.method == WTTPMethod.GET) {
+    //         return readResource(_requestLine.path);
+    //     } else if (_requestLine.method == WTTPMethod.POST) {
+    //         createResource(
+    //             _requestLine.path,
+    //             _header.mimeType,
+    //             _header.encoding,
+    //             _header.location,
+    //             _header.publisher,
+    //             _data
+    //         );
+    //         return readResource(_requestLine.path);
+    //     } else if (_requestLine.method == WTTPMethod.PUT) {
+    //         updateResource(
+    //             _requestLine.path,
+    //             _data,
+    //             _header.chunk,
+    //             _header.publisher
+    //         );
+    //         return readResource(_requestLine.path);
+    //     } else if (_requestLine.method == WTTPMethod.DELETE) {
+    //         deletePath(_requestLine.path);
+    //         return new bytes32[](0);
+    //     }
+    //     revert("Invalid WTTP method");
+    // }
 }
