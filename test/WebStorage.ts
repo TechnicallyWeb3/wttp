@@ -535,7 +535,7 @@ describe("WebStorage", function () {
             const TEST_END = 25000;
 
             const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-            const chunkSize = 128 * 1024; // 128KB chunks
+            const chunkSize = 32 * 1024; // 32KB chunks
             const filePath = "/large-file.txt";
             let chunkCount = 0;
 
@@ -576,7 +576,7 @@ describe("WebStorage", function () {
                     }
                 }
             } catch (error) {
-                console.log(`Maximum number of 128KB chunks in a single file: ${chunkCount}`);
+                console.log(`Maximum number of 32KB chunks in a single file: ${chunkCount}`);
                 console.log(`Total file size: ${(await webServer.getResourceInfo(filePath)).size} bytes`);
                 if (error instanceof Error) {
                     console.log(`Error: ${error.message}`);
