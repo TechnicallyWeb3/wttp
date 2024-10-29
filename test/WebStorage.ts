@@ -403,65 +403,8 @@ describe("WebStorage", function () {
     });
 
     describe("WebServer Edge Cases", function () {
-        it("Should test the maximum number of chunks that can be added to a single file", async function () {
-
-            this.timeout(6000000);
-
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-            const chunkSize = 24 * 1024; // 24KB chunks
-            const filePath = "/large-file.txt";
-            let chunkCount = 0;
-
-            // Create initial file
-            await webServer.PUT(
-                filePath,
-                "text/plain",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes(`Chunk ${chunkCount}: ` + "a".repeat(chunkSize - 10)),
-                { value: 0 }
-            );
-            chunkCount++;
-
-            try {
-                while (chunkCount < 200) {
-                    await webServer.PATCH(
-                        filePath,
-                        ethers.toUtf8Bytes(`Chunk ${chunkCount}: ` + "b".repeat(chunkSize - 10)),
-                        chunkCount,
-                        owner.address,
-                        { value: 0 }
-                    );
-                    chunkCount++;
-
-                    if (chunkCount % 100 === 0) {
-                        console.log(`Chunk count: ${chunkCount}`);
-                        // Verify the number of chunks
-                        const fileAddresses = await webServer.getResourceData(filePath);
-                        expect(fileAddresses.length).to.equal(chunkCount);
-
-                        // const feeData = await ethers.provider.getFeeData();
-                        // const gasPrice = feeData.gasPrice || 0;
-
-                        // console.log(`Gas price: ${ethers.formatEther(gasPrice).slice(0, 11)} ETH; Balance: ${ethers.formatEther(await ethers.provider.getBalance(owner.address)).slice(0, 11)} ETH`);
-                        // console.log(`File size: ${(await webServer.getFileInfo(filePath)).size} bytes`);
-                    }
-                }
-            } catch (error) {
-                console.log(`Maximum number of 24KB chunks in a single file: ${chunkCount}`);
-                console.log(`Total file size: ${(await webServer.getResourceInfo(filePath)).size} bytes`);
-                if (error instanceof Error) {
-                    console.log(`Error: ${error.message}`);
-                } else {
-                    console.log(`Error: ${String(error)}`);
-                }
-            }
-
-            expect(chunkCount).to.be.greaterThan(1);
-
-
-        });it("Should handle GET request for a large file (128KB)", async function () {
+        
+        it("Should handle GET request for a large file (128KB)", async function () {
             const { webServer, owner, dataPointStorage } = await loadFixture(deployWebStorageFixture);
             const chunkSize = 32000; // 32KB
             const totalSize = 128000; // 128KB
@@ -557,6 +500,9 @@ describe("WebStorage", function () {
 
             // Get resource data (chunk addresses)
             const [requestLine, headerData, chunkAddresses] = await webServer.GET(filePath, 0, 0);
+
+            console.log(requestLine);
+            console.log(headerData);
             
             // Assemble content from chunks
             let assembledContent = "";
@@ -578,5 +524,71 @@ describe("WebStorage", function () {
             // console.log("Partial content:", partialContent);
             // expect(partialContent).to.equal();
         });
+
+        it("Should test the maximum number of chunks that can be added to a single file", async function () {
+
+            console.log("Testing the maximum number of chunks that can be added to a single file... this will take a long ass time, go to bed.");
+            console.log("To shorten the test change the TEST_END variable in the test file to a lower number (such as 250).");
+
+            this.timeout(60000000);
+
+            const TEST_END = 25000;
+
+            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
+            const chunkSize = 128 * 1024; // 128KB chunks
+            const filePath = "/large-file.txt";
+            let chunkCount = 0;
+
+            // Create initial file
+            await webServer.PUT(
+                filePath,
+                "text/plain",
+                "utf-8",
+                "datapoint/chunk",
+                owner.address,
+                ethers.toUtf8Bytes(`Chunk ${chunkCount}: ` + "a".repeat(chunkSize - 10)),
+                { value: 0 }
+            );
+            chunkCount++;
+
+            try {
+                while (chunkCount < TEST_END) {
+                    await webServer.PATCH(
+                        filePath,
+                        ethers.toUtf8Bytes(`Chunk ${chunkCount}: ` + "b".repeat(chunkSize - 10)),
+                        chunkCount,
+                        owner.address,
+                        { value: 0 }
+                    );
+                    chunkCount++;
+
+                    if (chunkCount % 500 === 0) {
+                        console.log(`Chunk count: ${chunkCount}`);
+                        // Verify the number of chunks
+                        const fileAddresses = await webServer.getResourceData(filePath);
+                        expect(fileAddresses.length).to.equal(chunkCount);
+
+                        // const feeData = await ethers.provider.getFeeData();
+                        // const gasPrice = feeData.gasPrice || 0;
+
+                        // console.log(`Gas price: ${ethers.formatEther(gasPrice).slice(0, 11)} ETH; Balance: ${ethers.formatEther(await ethers.provider.getBalance(owner.address)).slice(0, 11)} ETH`);
+                        console.log(`File size: ${(await webServer.getResourceInfo(filePath)).size} bytes`);
+                    }
+                }
+            } catch (error) {
+                console.log(`Maximum number of 128KB chunks in a single file: ${chunkCount}`);
+                console.log(`Total file size: ${(await webServer.getResourceInfo(filePath)).size} bytes`);
+                if (error instanceof Error) {
+                    console.log(`Error: ${error.message}`);
+                } else {
+                    console.log(`Error: ${String(error)}`);
+                }
+            }
+
+            expect(chunkCount).to.be.greaterThan(1);
+
+
+        });
+
     });
 });

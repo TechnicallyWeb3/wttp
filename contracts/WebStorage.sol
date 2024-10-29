@@ -275,10 +275,10 @@ abstract contract WebRegistry is Ownable {
             _chunk <= resources[_path].length,
             "WS: Chunk index out of bounds"
         );
-        require(
-            _dataPoint.data.length <= _MAX_RESOURCE_SIZE(),
-            "WS: Data point too large"
-        );
+        // require(
+        //     _dataPoint.data.length <= _MAX_RESOURCE_SIZE(),
+        //     "WS: Data point too large"
+        // );
 
         // initialize to the original file size
         uint256 newResourceSize = resourceMetadata[_path].size;
@@ -755,8 +755,8 @@ contract WebServer is WebRegistry {
 
         if (
             startIndex > 0 ||
-            endIndex > 0 ||
-            metadata.size > _MAX_RESOURCE_SIZE()
+            endIndex > 0 // ||
+            // metadata.size > _MAX_RESOURCE_SIZE()
         ) {
             statusCode = 206;
             statusReason = "Partial Content";
