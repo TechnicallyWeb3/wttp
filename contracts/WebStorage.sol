@@ -731,7 +731,7 @@ contract WebServer is WebRegistry {
         string memory _path,
         uint256 startIndex,
         uint256 endIndex
-    ) public view returns (RequestLine memory, string memory, bytes memory) {
+    ) public view returns (RequestLine memory, string memory, bytes32[] memory) {
         ResourceMetadata memory metadata = getResourceInfo(_path);
 
         if (metadata.size == 0) {
@@ -743,11 +743,11 @@ contract WebServer is WebRegistry {
                     reason: "Not Found"
                 }),
                 "",
-                new bytes(0)
+                new bytes32[](0)
             );
         }
 
-        bytes memory assembledData = _assembleData(_path, startIndex, endIndex);
+        bytes32[] memory assembledData = getResourceData(_path);
         string memory headerData = _assembleHeader(_path);
 
         uint16 statusCode;

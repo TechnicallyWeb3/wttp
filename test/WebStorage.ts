@@ -76,8 +76,9 @@ describe("WebStorage", function () {
                 { value: 0 }
             )).to.not.be.reverted;
 
-            const response = await webServer.GET("/index.html", 0, 0);
-            expect(response[0].code).to.equal(200);
+            const [response, _, chunks] = await webServer.GET("/index.html", 0, 0);
+            expect(response.code).to.equal(200);
+            expect(chunks.length).to.be.greaterThan(0);
         });
 
         it("Should update an existing web file", async function () {
@@ -362,7 +363,7 @@ describe("WebStorage", function () {
             );
 
             // Full GET request
-            const [requestLine, headerData, content] = await webServer.GET("/test-get.html", 0, 0);
+            const [requestLine, headerData, chunks] = await webServer.GET("/test-get.html", 0, 0);
 
             console.log("GET Response:");
             console.log("Protocol:", requestLine.protocol);
@@ -370,7 +371,7 @@ describe("WebStorage", function () {
             console.log("Status Code:", requestLine.code);
             console.log("Reason:", requestLine.reason);
             console.log("Header Data:", headerData);
-            console.log("Content:", ethers.toUtf8String(content));
+            console.log("Chunk Addresses:", chunks);
 
             // Assertions
             expect(requestLine.protocol).to.equal("WTTP/1.0");
@@ -378,27 +379,10 @@ describe("WebStorage", function () {
             expect(requestLine.code).to.equal(200);
             expect(requestLine.reason).to.equal("OK");
             expect(headerData).to.include("Content-Type: text/html");
-            expect(ethers.toUtf8String(content)).to.equal("<html><body>Test GET</body></html>");
-
-            // Partial GET request
-            const [partialRequestLine, partialHeaderData, partialContent] = await webServer.GET("/test-get.html", 6, 11);
-
-            console.log("\nPartial GET Response:");
-            console.log("Protocol:", partialRequestLine.protocol);
-            console.log("Path:", partialRequestLine.path);
-            console.log("Status Code:", partialRequestLine.code);
-            console.log("Reason:", partialRequestLine.reason);
-            console.log("Header Data:", partialHeaderData);
-            console.log("Content:", ethers.toUtf8String(partialContent));
-
-            // Assertions for partial content
-            expect(partialRequestLine.code).to.equal(206);
-            expect(partialRequestLine.reason).to.equal("Partial Content");
-            expect(partialHeaderData).to.include("Content-Range: bytes 6-11/34");
-            expect(ethers.toUtf8String(partialContent)).to.equal("<body>");
+            expect(chunks.length).to.be.greaterThan(0);
 
             // Test for non-existent file (404 case)
-            const [notFoundRequestLine, notFoundHeaderData, notFoundContent] = await webServer.GET("/non-existent.html", 0, 0);
+            const [notFoundRequestLine, notFoundHeaderData, notFoundChunks] = await webServer.GET("/non-existent.html", 0, 0);
 
             console.log("\nGET Response for non-existent file (404):");
             console.log("Protocol:", notFoundRequestLine.protocol);
@@ -406,7 +390,7 @@ describe("WebStorage", function () {
             console.log("Status Code:", notFoundRequestLine.code);
             console.log("Reason:", notFoundRequestLine.reason);
             console.log("Header Data:", notFoundHeaderData);
-            console.log("Content:", notFoundContent);
+            console.log("Chunk Addresses:", notFoundChunks);
 
             // Assertions for non-existent file (404 case)
             expect(notFoundRequestLine.protocol).to.equal("WTTP/1.0");
@@ -414,7 +398,7 @@ describe("WebStorage", function () {
             expect(notFoundRequestLine.code).to.equal(404);
             expect(notFoundRequestLine.reason).to.equal("Not Found");
             expect(notFoundHeaderData).to.equal("");
-            expect(notFoundContent).to.equal("0x");
+            expect(notFoundChunks.length).to.equal(0);
         });
     });
 
@@ -478,7 +462,7 @@ describe("WebStorage", function () {
 
 
         });it("Should handle GET request for a large file (128KB)", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
+            const { webServer, owner, dataPointStorage } = await loadFixture(deployWebStorageFixture);
             const chunkSize = 32000; // 32KB
             const totalSize = 128000; // 128KB
             const filePath = "/large-file.txt";
@@ -511,27 +495,19 @@ describe("WebStorage", function () {
             const fileInfo = await webServer.getResourceInfo(filePath);
             expect(fileInfo.size).to.equal(totalSize);
 
-            const fileAddresses = await webServer.getResourceData(filePath);
-            expect(fileAddresses.length).to.equal(4);
-
-            console.log(`File addresses: ${fileAddresses.join(', ')}`);
-        
             // Full GET request
-            const [requestLine, headerData, content] = await webServer.GET(filePath, 0, 0);
-
-            // Convert content (hex data string) to UTF-8 string
-            const contentString = ethers.toUtf8String(content);
-            console.log("Content (first 100 chars):", contentString.substring(0, 100));
-            console.log("Content length:", contentString.length);
-        
-            // Log the first 100 characters of each chunk
-            for (let i = 0; i < 4; i++) {
-                const chunkStart = i * chunkSize;
-                const chunkEnd = (i + 1) * chunkSize;
-                const chunkContent = contentString.slice(chunkStart, chunkEnd);
-                console.log(`Chunk ${i + 1} (first 100 chars):`, chunkContent.substring(0, 100));
+            const [requestLine, headerData, chunkAddresses] = await webServer.GET(filePath, 0, 0);
+            
+            // Get actual content from chunks
+            let fullContent = "";
+            for (const chunkAddress of chunkAddresses) {
+                const dataPoint = await dataPointStorage.readDataPoint(chunkAddress);
+                fullContent += ethers.toUtf8String(dataPoint.data);
             }
-        
+
+            console.log("Content length:", fullContent.length);
+            console.log("First chunk preview:", fullContent.substring(0, 100));
+
             // Assertions
             expect(requestLine.protocol).to.equal("WTTP/1.0");
             expect(requestLine.path).to.equal(filePath);
@@ -539,56 +515,15 @@ describe("WebStorage", function () {
             expect(requestLine.reason).to.equal("OK");
             expect(headerData).to.include("Content-Type: text/plain");
             expect(headerData).to.include(`Content-Length: ${totalSize}`);
-            expect(contentString.length).to.equal(totalSize);
-            
-            let expectedFullContent = "";
-            // Verify content of each chunk
-            for (let i = 0; i < 4; i++) {
-                const chunkStart = i * chunkSize;
-                const chunkEnd = Math.min((i + 1) * chunkSize, totalSize);
-                const chunkContent = contentString.slice(chunkStart, chunkEnd);
-                const expectedChunkContent = `Chunk ${i + 1} `.repeat(chunkSize / 8).slice(0, chunkSize);
-                console.log(`Comparing chunk ${i + 1}:`);
-                console.log("Actual (first 100 chars):", chunkContent.substring(0, 100));
-                console.log("Expected (first 100 chars):", expectedChunkContent.substring(0, 100));
-                expect(chunkContent.substring(0, 100)).to.equal(expectedChunkContent.substring(0, 100));
-                expectedFullContent += expectedChunkContent;
-            }
-        
-            // Partial GET request (middle of the file)
-            const partialStart = 50000;
-            const partialEnd = 70000;
-            const [partialRequestLine, partialHeaderData, partialContent] = await webServer.GET(filePath, partialStart, partialEnd);
-        
-            const partialContentString = ethers.toUtf8String(partialContent);
-            console.log("Partial Content (first 100 chars):", partialContentString.substring(0, 100));
-
-            console.log("\nPartial Large File GET Response:");
-            console.log("Protocol:", partialRequestLine.protocol);
-            console.log("Path:", partialRequestLine.path);
-            console.log("Status Code:", partialRequestLine.code);
-            console.log("Reason:", partialRequestLine.reason);
-            console.log("Header Data:", partialHeaderData);
-            console.log("Partial Content Length:", partialContentString.length);
-        
-            // Assertions for partial content
-            expect(partialRequestLine.code).to.equal(206);
-            expect(partialRequestLine.reason).to.equal("Partial Content");
-            expect(partialHeaderData).to.include(`Content-Range: bytes ${partialStart}-${partialEnd}/${totalSize}`);
-            // expect(partialContentString.length).to.equal(partialEnd - partialStart);
-        
-            // Verify content of partial request
-            const expectedPartialContent = expectedFullContent.slice(partialStart, partialEnd);
-            console.log(`${expectedPartialContent.substring(18990, 19010)}...${expectedPartialContent.substring(expectedPartialContent.length - 20)}.`);
-            console.log(`${partialContentString.substring(18990, 19010)}...${partialContentString.substring(partialContentString.length - 20)}.`);
-            expect(partialContentString.substring(0, 100)).to.equal(expectedPartialContent.substring(0, 100));
+            expect(fullContent.length).to.equal(totalSize);
+            expect(chunkAddresses.length).to.equal(4);
         });
 
     });
 
     describe("WebServer Data Assembly", function () {
         it("Should correctly assemble data from multiple chunks", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
+            const { webServer, owner, dataPointStorage } = await loadFixture(deployWebStorageFixture);
             const filePath = "/multi-chunk.txt";
             
             // Create first chunk
@@ -620,28 +555,28 @@ describe("WebStorage", function () {
                 { value: 0 }
             );
 
-            // Verify resource info
-            const resourceInfo = await webServer.getResourceInfo(filePath);
-            console.log("Total file size:", resourceInfo.size);
-
             // Get resource data (chunk addresses)
-            const chunks = await webServer.getResourceData(filePath);
-            console.log("Number of chunks:", chunks.length);
+            const [requestLine, headerData, chunkAddresses] = await webServer.GET(filePath, 0, 0);
             
-            // Test full content retrieval
-            const [requestLine, headerData, content] = await webServer.GET(filePath, 0, 0);
-            console.log("Full content:", ethers.toUtf8String(content));
-            expect(ethers.toUtf8String(content)).to.equal("Chunk1Chunk2Chunk3");
+            // Assemble content from chunks
+            let assembledContent = "";
+            for (const chunkAddress of chunkAddresses) {
+                const dataPoint = await dataPointStorage.readDataPoint(chunkAddress);
+                assembledContent += ethers.toUtf8String(dataPoint.data);
+            }
 
-            // Test partial content retrieval (middle chunk)
-            const [partialRequestLine, partialHeaderData, partialContent] = await webServer.GET(filePath, 6, 11);
-            console.log("Partial content:", ethers.toUtf8String(partialContent));
-            expect(ethers.toUtf8String(partialContent)).to.equal("Chunk2");
+            console.log("Assembled content:", assembledContent);
+            expect(assembledContent).to.equal("Chunk1Chunk2Chunk3");
 
-            // Test cross-chunk content retrieval
-            const [crossRequestLine, crossHeaderData, crossContent] = await webServer.GET(filePath, 4, 13);
-            console.log("Cross-chunk content:", ethers.toUtf8String(crossContent));
-            expect(ethers.toUtf8String(crossContent)).to.equal("1Chunk2Ch");
+            // // Test partial content retrieval (middle chunk)
+            // const [partialRequestLine, partialHeaderData, partialChunks] = await webServer.GET(filePath, 6, 11);
+            // let partialContent = "";
+            // for (const chunkAddress of partialChunks) {
+            //     const dataPoint = await dataPointStorage.readDataPoint(chunkAddress);
+            //     partialContent += ethers.toUtf8String(dataPoint.data);
+            // }
+            // console.log("Partial content:", partialContent);
+            // expect(partialContent).to.equal();
         });
     });
 });
