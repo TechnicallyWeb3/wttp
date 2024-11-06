@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: AGPL-3.0
+pragma solidity ^0.8.20;
+
+import "./WebStorage.sol";
+import "./WebContract.sol";
+
+contract WTTPMethods {
+    
+    struct RequestLine {
+        string protocol;
+        string path;
+    }
+
+    struct ResponseLine {
+        string protocol;
+        uint16 code;
+    }
+
+    struct RequestHeader {
+        address host;
+        bytes2[] accept;
+        bytes2[] acceptCharset;
+        bytes4[] acceptLanguage;
+        uint256 ifModifiedSince;
+        bytes32 ifNoneMatch;
+    }
+
+    function _methodAllowed(uint16 _methods, Method _method) internal view returns (bool) {
+        uint16 methodBit = uint16(1 << uint8(_method)); // Create a bitmask for the method
+        
+        if (_methods & methodBit != 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    struct OPTIONSResponse {
+        ResponseLine responseLine;
+        uint16 allow;
+    }
+
+    function OPTIONS(
+        RequestLine memory requestLine,
+        RequestHeader memory requestHeader
+    ) public view returns (OPTIONSResponse memory) {
+        WTTPBaseMethods host = WTTPBaseMethods(requestHeader.host);
+        require(
+            host.compatibleWTTPVersion(requestLine.protocol),
+            "WTTP: Incompatible WTTP version"
+        );
+        uint16 allow = host.INFO(requestLine.path).headerInfo.methods;
+        require(_methodAllowed(allow, Method.OPTIONS), "WTTP: Method not allowed");
+
+        return
+            OPTIONSResponse({
+                responseLine: ResponseLine({
+                    protocol: host.WTTP_VERSION(),
+                    code: 204
+                }),
+                allow: allow
+            });
+    }
+
+    struct HEADResponse {
+        HeaderInfo headerInfo;
+        DataPointInfo dataPointInfo; // if datapoint is a location datapoint
+        bytes locationData; // if datapoint is a location datapoint assume stored to a single data point
+    }
+
+    function _getLocationData(
+        string memory _path
+    ) internal view returns (bytes memory locationData) {
+        if (
+            uint8(
+                DPS_.readDataPoint(_readLocation(_path)[0]).structure.location[1]
+            ) > 0x01
+        ) {
+            locationData = DPS_.readDataPoint(_readLocation(_path)[0]).data;
+        }
+    }
+
+    function _assembleHEADResponse(
+        string memory _path
+    ) internal view returns (HEADResponse memory) {
+        HEADResponse memory headerResponse;
+        HeaderInfo memory pathHeader = _readHeader(_path);
+        headerResponse.headerInfo = pathHeader;
+        headerResponse.locationData = _getLocationData(_path);
+        if (headerResponse.locationData.length > 0) {
+            headerResponse.dataPointInfo = DPS_.dataPointInfo(
+                _readLocation(_path)[0]
+            );
+        }
+
+        return headerResponse;
+    }
+
+    function HEAD(
+        string memory _path
+    ) public view returns (ResponseLine memory, HEADResponse memory) {
+        ResourceMetadata memory metadata = INFO(_path);
+        HEADResponse memory headerResponse = _assembleHEADResponse(_path);
+
+        if (metadata.size == 0) {
+            return (
+                ResponseLine({
+                    protocol: WTTP_VERSION,
+                    code: 404
+                }),
+                headerResponse
+            );
+        }
+
+        return (
+            RequestLine({
+                protocol: WTTP_VERSION,
+                path: _path,
+                code: 200,
+                reason: "OK"
+            }),
+            headerResponse
+        );
+    }
+
+    function GET(
+        string memory _path,
+        uint256 startIndex,
+        uint256 endIndex
+    )
+        public
+        view
+        returns (RequestLine memory, HeaderResponse memory, bytes memory)
+    {
+        ResourceMetadata memory metadata = INFO(_path);
+        HeaderResponse memory headerResponse = _assembleHEADResponse(_path);
+
+        if (metadata.size == 0) {
+            return (
+                RequestLine({
+                    protocol: WTTP_VERSION,
+                    path: _path,
+                    code: 404,
+                    reason: "Not Found"
+                }),
+                headerResponse,
+                new bytes(0)
+            );
+        }
+
+        bytes32[] memory resourceData = LOCATE(_path);
+
+        uint16 statusCode;
+        string memory statusReason;
+
+        if (
+            startIndex > 0 ||
+            (endIndex > 0 && endIndex < resourceData.length - 1)
+        ) {
+            statusCode = 206;
+            statusReason = "Partial Content";
+        } else {
+            endIndex = resourceData.length;
+            statusCode = 200;
+            statusReason = "OK";
+        }
+
+        bytes memory responseData = DPS_
+            .readDataPoint(resourceData[startIndex])
+            .data;
+
+        for (uint256 i = startIndex + 1; i < endIndex; i++) {
+            responseData = abi.encodePacked(
+                responseData,
+                DPS_.readDataPoint(resourceData[i]).data
+            );
+        }
+
+        return (
+            RequestLine({
+                protocol: WTTP_VERSION,
+                path: _path,
+                code: statusCode,
+                reason: statusReason
+            }),
+            headerResponse,
+            responseData
+        );
+    }
+}

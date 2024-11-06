@@ -4,11 +4,11 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { StatusMap, TypeMap, DataPointStorage, WebRegistry, DataPointRegistry, WebServer, DataPointStorage__factory } from "../typechain-types";
+import { DataPointStorage, DataPointRegistry, DataPointStorage__factory } from "../typechain-types";
 
 describe("WebStorage", function () {
     async function deployWebStorageFixture() {
-        const [owner, user1, user2] = await hre.ethers.getSigners();
+        const [tw3, publisher, dev] = await hre.ethers.getSigners();
 
         console.log(`Deploying StatusMap...`);
         const StatusMap = await hre.ethers.getContractFactory("StatusMap");
@@ -24,17 +24,16 @@ describe("WebStorage", function () {
 
         console.log(`Deploying DataPointRegistry...`);
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
-        const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target);
+        const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
 
-        console.log(`Deploying WebServer...`);
-        const WebServer = await hre.ethers.getContractFactory("WebServer");
-        const webServer = await WebServer.deploy(statusMap.target, typeMap.target, dataPointRegistry.target, owner.address);
-
-        return { statusMap, typeMap, dataPointStorage, dataPointRegistry, webServer, owner, user1, user2 };
+        return { statusMap, typeMap, dataPointStorage, dataPointRegistry, tw3, publisher, dev };
     }
 
     describe("StatusMap", function () {
         it("Should set and get status codes correctly", async function () {
+
+            this.slow(2000);
+
             const { statusMap } = await loadFixture(deployWebStorageFixture);
 
             //   await expect(statusMap.getReasonPhrase(200)).to.not.be.reverted;
@@ -55,540 +54,314 @@ describe("WebStorage", function () {
         });
 
         it("Should not allow non-owner to add new status codes", async function () {
-            const { statusMap, user1 } = await loadFixture(deployWebStorageFixture);
+            const { statusMap, publisher: user1 } = await loadFixture(deployWebStorageFixture);
 
             await expect(statusMap.connect(user1).setStatus(599, "Custom Error"))
                 .to.be.reverted;
         });
     });
 
-    describe("WebServer", function () {
-        it("Should create a web file", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-
-            await expect(webServer.PUT(
-                "/index.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Hello, World!</body></html>"),
-                { value: 0 }
-            )).to.not.be.reverted;
-
-            const [response, _, chunks] = await webServer.GET("/index.html", 0, 0);
-            expect(response.code).to.equal(200);
-            expect(chunks.length).to.be.greaterThan(0);
+    describe("TypeMap", function () {
+        it("Should return correct bytes2 for predefined MIME types", async function () {
+            const { typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            expect(await typeMap.getTypeBytes(0, "text/plain")).to.equal("0x7470");
+            expect(await typeMap.getTypeBytes(0, "application/json")).to.equal("0x786a");
+            expect(await typeMap.getTypeBytes(0, "image/png")).to.equal("0x6970");
         });
 
-        it("Should update an existing web file", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-
-            await webServer.PUT(
-                "/index.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Hello, World!</body></html>"),
-                { value: 0 }
-            );
-
-            await expect(webServer.PATCH(
-                "/index.html",
-                ethers.toUtf8Bytes("<html><body>Updated content</body></html>"),
-                0,
-                owner.address,
-                { value: 0 }
-            )).to.not.be.reverted;
-
-            const response = await webServer.GET("/index.html", 0, 0);
-            expect(response[0].code).to.equal(200);
+        it("Should return correct strings for predefined MIME type bytes", async function () {
+            const { typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            expect(await typeMap.getTypeString(0, "0x7470")).to.equal("text/plain");
+            expect(await typeMap.getTypeString(0, "0x786A")).to.equal("application/json");
+            expect(await typeMap.getTypeString(0, "0x6970")).to.equal("image/png");
         });
 
-        it("Should not allow creating a file that already exists", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
+        it("Should allow owner to add new type mappings", async function () {
+            const { typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            await expect(typeMap.setType(0, "custom/type", "0x9999"))
+                .to.not.be.reverted;
 
-            await webServer.PUT(
-                "/index.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Hello, World!</body></html>"),
-                { value: 0 }
-            );
-
-            await expect(webServer.PUT(
-                "/index.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Another file</body></html>")
-            )).to.be.reverted;
+            expect(await typeMap.getTypeBytes(0, "custom/type")).to.equal("0x9999");
+            expect(await typeMap.getTypeString(0, "0x9999")).to.equal("custom/type");
         });
 
-        it("Should delete a web file", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-
-            await webServer.PUT(
-                "/to-delete.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Delete me</body></html>"),
-                { value: 0 }
-            );
-
-            await expect(webServer.DELETE(
-                "/to-delete.html"
-            )).to.not.be.reverted;
-
-            const response = await webServer.GET("/to-delete.html", 0, 0);
-            expect(response[0].code).to.equal(404);
+        it("Should not allow non-owner to add new type mappings", async function () {
+            const { typeMap, publisher } = await loadFixture(deployWebStorageFixture);
+            
+            await expect(typeMap.connect(publisher).setType(0, "custom/type", "0x9999"))
+                .to.be.reverted;
         });
 
-        describe("Royalty Tests", function () {
-            it("Should require royalty payment when writing existing data point", async function () {
-                const { owner, user1, dataPointRegistry, dataPointStorage } = await loadFixture(deployWebStorageFixture);
-
-                const dataPointStructure = {
-                    mimeType: "0x7470", // text/plain
-                    encoding: "0x7574", // utf-8
-                    location: "0x6463" // datapoint/chunk
-                };
-
-                const dataPoint = {
-                    structure: dataPointStructure,
-                    data: ethers.toUtf8Bytes("Test Data")
-                };
-
-                // First write by owner
-                await expect(dataPointRegistry.writeDataPoint(dataPoint, owner.address))
-                    .to.not.be.reverted;
-
-                // Calculate the data point address
-                const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
-
-                // Get the royalty amount
-                const royaltyAmount = await dataPointRegistry.getRoyalty(dataPointAddress);
-
-                // Attempt to write the same data point by user1 without paying royalty
-                await expect(dataPointRegistry.connect(user1).writeDataPoint(dataPoint, user1.address))
-                    .to.be.reverted;
-
-                // Write the same data point by user1 with correct royalty payment
-                await expect(dataPointRegistry.connect(user1).writeDataPoint(dataPoint, user1.address, { value: royaltyAmount }))
-                    .to.not.be.reverted;
-            });
-            it("Should allow same address to update without royalty", async function () {
-                const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-
-                await webServer.PUT(
-                    "/test.txt",
-                    "text/plain",
-                    "utf-8",
-                    "datapoint/chunk",
-                    owner.address,
-                    ethers.toUtf8Bytes("Initial"),
-                    { value: 0 }
-                );
-
-                await expect(webServer.PATCH(
-                    "/test.txt",
-                    ethers.toUtf8Bytes("Updated"),
-                    0,
-                    owner.address,
-                    { value: 0 }
-                )).to.not.be.reverted;
-            });
-
-            it("Should require royalty payment when different WebServer writes the same data", async function () {
-                const { webServer, owner, user1, dataPointRegistry, dataPointStorage, statusMap, typeMap } = await loadFixture(deployWebStorageFixture);
-                console.log("Starting Royalty Test");
-
-                const dataPointData = ethers.toUtf8Bytes("Common Data");
-
-                // First WebServer writes data
-                await expect(webServer.PUT(
-                    "/test.txt",
-                    "text/plain",
-                    "utf-8",
-                    "datapoint/chunk",
-                    owner.address,
-                    dataPointData,
-                    { value: 0 }
-                )).to.not.be.reverted;
-
-                const dataPointStructure = {
-                    mimeType: "0x7470",
-                    encoding: "0x7508",
-                    location: "0x0101"
-                };
-
-                const dataPoint = {
-                    structure: dataPointStructure,
-                    data: dataPointData
-                };
-
-                const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
-                console.log(`Data point address: ${dataPointAddress}`);
-
-                // Deploy a second WebServer
-                const WebServer2 = await ethers.getContractFactory("WebServer");
-                const webServer2 = await WebServer2.connect(user1).deploy(statusMap.target, typeMap.target, dataPointRegistry.target, user1.address);
-                console.log("Second WebServer deployed");
-
-                console.log("Second WebServer tries to write the same data");
-                // Second WebServer tries to write the same data
-                await expect(webServer2.connect(user1).PUT(
-                    "/different-path.txt",
-                    "text/plain",
-                    "utf-8",
-                    "datapoint/chunk",
-                    user1.address,
-                    dataPointData,
-                    { value: 0 }
-                )).to.be.reverted;
-
-                console.log("Second WebServer failed to write the same data as expected");
-
-                console.log(`Calculated data point address: ${dataPointAddress}`);
-                const royaltyAmount = await dataPointRegistry.getRoyalty(dataPointAddress);
-                console.log(`Royalty amount: ${royaltyAmount}`);
-
-                // Second WebServer writes the same data with royalty payment
-                await expect(webServer2.connect(user1).PUT(
-                    "/different-path.txt",
-                    "text/plain",
-                    "utf-8",
-                    "datapoint/chunk",
-                    user1.address,
-                    dataPointData,
-                    { value: royaltyAmount }
-                )).to.not.be.reverted;
-                console.log("Second WebServer wrote the same data with royalty payment");
-            });
-
-            it("Should not require royalty payment for different data", async function () {
-                const { webServer, owner, user1, dataPointRegistry, statusMap, typeMap } = await loadFixture(deployWebStorageFixture);
-
-                // First WebServer writes data
-                await webServer.PUT(
-                    "/test1.txt",
-                    "text/plain",
-                    "utf-8",
-                    "datapoint/chunk",
-                    owner.address,
-                    ethers.toUtf8Bytes("Data 1"),
-                    { value: 0 }
-                );
-
-                // Deploy a second WebServer
-                const WebServer2 = await ethers.getContractFactory("WebServer");
-                const webServer2 = await WebServer2.deploy(statusMap.target, typeMap.target, dataPointRegistry.target, user1.address);
-
-                // // Second WebServer writes different data
-                // await expect(webServer2.WTTPRequest(
-                //     { method: 1, path: "/test2.txt", version: 1 },
-                //     { mimeType: "text/plain", encoding: "utf-8", location: "datapoint/chunk", chunk: 0, publisher: user1.address, httpHeader: "" },
-                //     ethers.toUtf8Bytes("Data 2")
-                // )).to.not.be.reverted;
-            });
+        it("Should revert when requesting non-existent types", async function () {
+            const { typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            await expect(typeMap.getTypeBytes(0, "non/existent"))
+                .to.be.revertedWith("MAP: Type bytes not found");
+                
+            await expect(typeMap.getTypeString(0, "0x0000"))
+                .to.be.revertedWith("MAP: Type string not found");
         });
 
-        it("Should return correct HEAD response", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-
-            // Create a file first
-            await webServer.PUT(
-                "/test-head.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Test HEAD</body></html>"),
-                { value: 0 }
-            );
-
-            // Call HEAD function
-            const [requestLine, headerData] = await webServer.HEAD("/test-head.html");
-
-            console.log("HEAD Response:");
-            console.log("Protocol:", requestLine.protocol);
-            console.log("Path:", requestLine.path);
-            console.log("Status Code:", requestLine.code);
-            console.log("Reason:", requestLine.reason);
-            console.log("Header Data:", headerData);
-
-            // Assertions
-            expect(requestLine.protocol).to.equal("WTTP/1.0");
-            expect(requestLine.path).to.equal("/test-head.html");
-            expect(requestLine.code).to.equal(200);
-            expect(requestLine.reason).to.equal("OK");
-            expect(headerData).to.include("Content-Type: text/html");
-
-            // Test for non-existent file
-            const [notFoundRequestLine, notFoundHeaderData] = await webServer.HEAD("/non-existent.html");
-
-            console.log("\nHEAD Response for non-existent file:");
-            console.log("Protocol:", notFoundRequestLine.protocol);
-            console.log("Path:", notFoundRequestLine.path);
-            console.log("Status Code:", notFoundRequestLine.code);
-            console.log("Reason:", notFoundRequestLine.reason);
-            console.log("Header Data:", notFoundHeaderData);
-
-            // Assertions for non-existent file
-            expect(notFoundRequestLine.protocol).to.equal("WTTP/1.0");
-            expect(notFoundRequestLine.path).to.equal("/non-existent.html");
-            expect(notFoundRequestLine.code).to.equal(404);
-            expect(notFoundRequestLine.reason).to.equal("Not Found");
-            expect(notFoundHeaderData).to.equal("");
-        });
-
-        it("Should return correct GET response including 404", async function () {
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-
-            // Create a file
-            await webServer.PUT(
-                "/test-get.html",
-                "text/html",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Test GET</body></html>"),
-                { value: 0 }
-            );
-
-            // Full GET request
-            const [requestLine, headerData, chunks] = await webServer.GET("/test-get.html", 0, 0);
-
-            console.log("GET Response:");
-            console.log("Protocol:", requestLine.protocol);
-            console.log("Path:", requestLine.path);
-            console.log("Status Code:", requestLine.code);
-            console.log("Reason:", requestLine.reason);
-            console.log("Header Data:", headerData);
-            console.log("Chunk Addresses:", chunks);
-
-            // Assertions
-            expect(requestLine.protocol).to.equal("WTTP/1.0");
-            expect(requestLine.path).to.equal("/test-get.html");
-            expect(requestLine.code).to.equal(200);
-            expect(requestLine.reason).to.equal("OK");
-            expect(headerData).to.include("Content-Type: text/html");
-            expect(chunks.length).to.be.greaterThan(0);
-
-            // Test for non-existent file (404 case)
-            const [notFoundRequestLine, notFoundHeaderData, notFoundChunks] = await webServer.GET("/non-existent.html", 0, 0);
-
-            console.log("\nGET Response for non-existent file (404):");
-            console.log("Protocol:", notFoundRequestLine.protocol);
-            console.log("Path:", notFoundRequestLine.path);
-            console.log("Status Code:", notFoundRequestLine.code);
-            console.log("Reason:", notFoundRequestLine.reason);
-            console.log("Header Data:", notFoundHeaderData);
-            console.log("Chunk Addresses:", notFoundChunks);
-
-            // Assertions for non-existent file (404 case)
-            expect(notFoundRequestLine.protocol).to.equal("WTTP/1.0");
-            expect(notFoundRequestLine.path).to.equal("/non-existent.html");
-            expect(notFoundRequestLine.code).to.equal(404);
-            expect(notFoundRequestLine.reason).to.equal("Not Found");
-            expect(notFoundHeaderData).to.equal("");
-            expect(notFoundChunks.length).to.equal(0);
+        it("Should correctly handle type enums", async function () {
+            const { typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            // Get first MIME type (should be text/plain)
+            const firstType = await typeMap.getTypeEnum(0, 0);
+            expect(await typeMap.getTypeString(0, firstType)).to.equal("text/plain");
+            
+            // Should revert when index is out of bounds
+            await expect(typeMap.getTypeEnum(0, 9999))
+                .to.be.revertedWith("MAP: Invalid index");
         });
     });
 
-    describe("WebServer Edge Cases", function () {
-        
-        it("Should handle GET request for a large file (128KB)", async function () {
-            const { webServer, owner, dataPointStorage } = await loadFixture(deployWebStorageFixture);
-            const chunkSize = 32000; // 32KB
-            const totalSize = 128000; // 128KB
-            const filePath = "/large-file.txt";
-        
-            // Create a large file with 4 chunks
-            for (let i = 0; i < 4; i++) {
-                const chunkContent = Buffer.alloc(chunkSize, `Chunk ${i + 1} `);
-                if (i === 0) {
-                    await webServer.PUT(
-                        filePath,
-                        "text/plain",
-                        "utf-8",
-                        "datapoint/chunk",
-                        owner.address,
-                        chunkContent,
-                        { value: 0 }
-                    );
-                } else {
-                    await webServer.PATCH(
-                        filePath,
-                        chunkContent,
-                        i,
-                        owner.address,
-                        { value: 0 }
-                    );
-                }
-            }
-        
-            // Verify file size
-            const fileInfo = await webServer.getResourceInfo(filePath);
-            expect(fileInfo.size).to.equal(totalSize);
-
-            // Full GET request
-            const [requestLine, headerData, chunkAddresses] = await webServer.GET(filePath, 0, 0);
+    describe("DataPointStorage", function () {
+        it("Should write and read a data point correctly", async function () {
+            const { dataPointStorage, typeMap } = await loadFixture(deployWebStorageFixture);
             
-            // Get actual content from chunks
-            let fullContent = "";
-            for (const chunkAddress of chunkAddresses) {
-                const dataPoint = await dataPointStorage.readDataPoint(chunkAddress);
-                fullContent += ethers.toUtf8String(dataPoint.data);
-            }
+            const dataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"), // 0x7470
+                    charset: await typeMap.getTypeBytes(1, "utf-8"), // 0x7508
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"), // 0x0101
+                },
+                data: ethers.toUtf8Bytes("Hello, World!"),
+            };
 
-            console.log("Content length:", fullContent.length);
-            console.log("First chunk preview:", fullContent.substring(0, 100));
-
-            // Assertions
-            expect(requestLine.protocol).to.equal("WTTP/1.0");
-            expect(requestLine.path).to.equal(filePath);
-            expect(requestLine.code).to.equal(200);
-            expect(requestLine.reason).to.equal("OK");
-            expect(headerData).to.include("Content-Type: text/plain");
-            expect(headerData).to.include(`Content-Length: ${totalSize}`);
-            expect(fullContent.length).to.equal(totalSize);
-            expect(chunkAddresses.length).to.equal(4);
+            // Write the data point
+            const tx = await dataPointStorage.writeDataPoint(dataPoint);
+            const receipt = await tx.wait();
+            
+            // Get the data point address from the transaction logs
+            const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
+            
+            // Read the data point back
+            const storedDataPoint = await dataPointStorage.readDataPoint(dataPointAddress);
+            
+            // Verify the stored data
+            expect(storedDataPoint.structure.mimeType).to.equal(dataPoint.structure.mimeType);
+            expect(storedDataPoint.structure.charset).to.equal(dataPoint.structure.charset);
+            expect(storedDataPoint.structure.location).to.equal(dataPoint.structure.location);
+            expect(ethers.toUtf8String(storedDataPoint.data)).to.equal("Hello, World!");
         });
 
+        it("Should return same address and use less gas when rewriting identical data", async function () {
+            const { dataPointStorage, typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            const dataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: ethers.toUtf8Bytes("Hello, World!"),
+            };
+
+            // First write
+            const tx1 = await dataPointStorage.writeDataPoint(dataPoint);
+            const receipt1 = await tx1.wait();
+            const gasUsed1 = receipt1?.gasUsed || 0n;
+            const address1 = await dataPointStorage.calculateAddress(dataPoint);
+
+            // Second write of same data
+            const tx2 = await dataPointStorage.writeDataPoint(dataPoint);
+            const receipt2 = await tx2.wait();
+            const gasUsed2 = receipt2?.gasUsed || 0n;
+            const address2 = await dataPointStorage.calculateAddress(dataPoint);
+
+            // Verify addresses match and second transaction used less gas
+            expect(address1).to.equal(address2);
+            expect(gasUsed2).to.be.lessThan(gasUsed1);
+        });
+
+        it("Should return correct data point info", async function () {
+            const { dataPointStorage, typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            const dataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: ethers.toUtf8Bytes("Hello, World!"),
+            };
+
+            // Write the data point
+            await dataPointStorage.writeDataPoint(dataPoint);
+            const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
+            
+            // Get the data point info
+            const info = await dataPointStorage.dataPointInfo(dataPointAddress);
+            
+            // Verify the info
+            expect(info.size).to.equal(BigInt(dataPoint.data.length));
+            expect(info.mimeType).to.equal(dataPoint.structure.mimeType);
+            expect(info.charset).to.equal(dataPoint.structure.charset);
+            expect(info.location).to.equal(dataPoint.structure.location);
+        });
+
+        it("Should revert on invalid data point parameters", async function () {
+            const { dataPointStorage, typeMap } = await loadFixture(deployWebStorageFixture);
+            
+            const invalidDataPoint = {
+                structure: {
+                    mimeType: "0x0000",
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: ethers.toUtf8Bytes("Hello, World!"),
+            };
+
+            await expect(dataPointStorage.writeDataPoint(invalidDataPoint))
+                .to.be.revertedWith("DPS: Invalid MIME Type");
+
+            const emptyDataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: new Uint8Array(0),
+            };
+
+            await expect(dataPointStorage.writeDataPoint(emptyDataPoint))
+                .to.be.revertedWith("DPS: Empty data");
+        });
     });
 
-    describe("WebServer Data Assembly", function () {
-        it("Should correctly assemble data from multiple chunks", async function () {
-            const { webServer, owner, dataPointStorage } = await loadFixture(deployWebStorageFixture);
-            const filePath = "/multi-chunk.txt";
+    describe("DataPointRegistry", function () {
+        it("Should write and read a data point with no royalties", async function () {
+            const { dataPointStorage, dataPointRegistry, typeMap } = await loadFixture(deployWebStorageFixture);
             
-            // Create first chunk
-            await webServer.PUT(
-                filePath,
-                "text/plain",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes("Chunk1"),
-                { value: 0 }
-            );
+            const dataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: ethers.toUtf8Bytes("Hello, World!"),
+            };
 
-            // Add second chunk
-            await webServer.PATCH(
-                filePath,
-                ethers.toUtf8Bytes("Chunk2"),
-                1,
-                owner.address,
-                { value: 0 }
-            );
-
-            // Add third chunk
-            await webServer.PATCH(
-                filePath,
-                ethers.toUtf8Bytes("Chunk3"),
-                2,
-                owner.address,
-                { value: 0 }
-            );
-
-            // Get resource data (chunk addresses)
-            const [requestLine, headerData, chunkAddresses] = await webServer.GET(filePath, 0, 0);
-
-            console.log(requestLine);
-            console.log(headerData);
+            // Write with no publisher (address(0))
+            const tx = await dataPointRegistry.writeDataPoint(dataPoint, ethers.ZeroAddress);
+            const receipt = await tx.wait();
             
-            // Assemble content from chunks
-            let assembledContent = "";
-            for (const chunkAddress of chunkAddresses) {
-                const dataPoint = await dataPointStorage.readDataPoint(chunkAddress);
-                assembledContent += ethers.toUtf8String(dataPoint.data);
-            }
-
-            console.log("Assembled content:", assembledContent);
-            expect(assembledContent).to.equal("Chunk1Chunk2Chunk3");
-
-            // // Test partial content retrieval (middle chunk)
-            // const [partialRequestLine, partialHeaderData, partialChunks] = await webServer.GET(filePath, 6, 11);
-            // let partialContent = "";
-            // for (const chunkAddress of partialChunks) {
-            //     const dataPoint = await dataPointStorage.readDataPoint(chunkAddress);
-            //     partialContent += ethers.toUtf8String(dataPoint.data);
-            // }
-            // console.log("Partial content:", partialContent);
-            // expect(partialContent).to.equal();
+            const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
+            const storedDataPoint = await dataPointStorage.readDataPoint(dataPointAddress);
+            
+            expect(ethers.toUtf8String(storedDataPoint.data)).to.equal("Hello, World!");
         });
 
-        it("Should test the maximum number of chunks that can be added to a single file", async function () {
+        it("Should handle royalties correctly", async function () {
+            const { dataPointStorage, dataPointRegistry, typeMap, publisher, dev, tw3 } = await loadFixture(deployWebStorageFixture);
+            
+            this.slow(400);
 
-            console.log("Testing the maximum number of chunks that can be added to a single file... this will take a long ass time, go to bed.");
-            console.log("To shorten the test change the TEST_END variable in the test file to a lower number (such as 250).");
-
-            this.timeout(60000000);
-
-            const TEST_END = 25000;
-
-            const { webServer, owner } = await loadFixture(deployWebStorageFixture);
-            const chunkSize = 32 * 1024; // 32KB chunks
-            const filePath = "/large-file.txt";
-            let chunkCount = 0;
-
-            // Create initial file
-            await webServer.PUT(
-                filePath,
-                "text/plain",
-                "utf-8",
-                "datapoint/chunk",
-                owner.address,
-                ethers.toUtf8Bytes(`Chunk ${chunkCount}: ` + "a".repeat(chunkSize - 10)),
-                { value: 0 }
-            );
-            chunkCount++;
-
-            try {
-                while (chunkCount < TEST_END) {
-                    await webServer.PATCH(
-                        filePath,
-                        ethers.toUtf8Bytes(`Chunk ${chunkCount}: ` + "b".repeat(chunkSize - 10)),
-                        chunkCount,
-                        owner.address,
-                        { value: 0 }
-                    );
-                    chunkCount++;
-
-                    if (chunkCount % 500 === 0) {
-                        console.log(`Chunk count: ${chunkCount}`);
-                        // Verify the number of chunks
-                        const fileAddresses = await webServer.getResourceData(filePath);
-                        expect(fileAddresses.length).to.equal(chunkCount);
-
-                        // const feeData = await ethers.provider.getFeeData();
-                        // const gasPrice = feeData.gasPrice || 0;
-
-                        // console.log(`Gas price: ${ethers.formatEther(gasPrice).slice(0, 11)} ETH; Balance: ${ethers.formatEther(await ethers.provider.getBalance(owner.address)).slice(0, 11)} ETH`);
-                        console.log(`File size: ${(await webServer.getResourceInfo(filePath)).size} bytes`);
-                    }
-                }
-            } catch (error) {
-                console.log(`Maximum number of 32KB chunks in a single file: ${chunkCount}`);
-                console.log(`Total file size: ${(await webServer.getResourceInfo(filePath)).size} bytes`);
-                if (error instanceof Error) {
-                    console.log(`Error: ${error.message}`);
-                } else {
-                    console.log(`Error: ${String(error)}`);
-                }
+            // Create a 24KB data chunk
+            const chunk = new Uint8Array(24 * 1024); // 24 * 1024 bytes = 24KB
+            for (let i = 0; i < chunk.length; i++) {
+                chunk[i] = i % 256; // Fill with repeating pattern
             }
+            
+            const dataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "application/octet-stream"),
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: chunk,
+            };
 
-            expect(chunkCount).to.be.greaterThan(1);
+            // Publisher writes the data point first
+            await dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address);
+            const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
+            
+            // Get royalty amount
+            const royaltyAmount = await dataPointRegistry.getRoyalty(dataPointAddress);
+            expect(royaltyAmount).to.be.gt(0);
 
+            // Dev tries to write same data point without paying royalty
+            await expect(
+                dataPointRegistry.connect(dev).writeDataPoint(dataPoint, ethers.ZeroAddress)
+            ).to.be.revertedWith("Not enough value to pay royalties");
 
+            // Dev writes same data point with royalty payment
+            await dataPointRegistry.connect(dev).writeDataPoint(
+                dataPoint, 
+                ethers.ZeroAddress, 
+                { value: royaltyAmount }
+            );
+
+            // Check publisher's royalty balance
+            const publisherBalance = await dataPointRegistry.royaltyBalance(publisher.address);
+            expect(publisherBalance).to.be.gt(0);
+            
+            // Check TW3's royalty balance (should be 10% of royalty)
+            const tw3Balance = await dataPointRegistry.royaltyBalance(tw3.address);
+            expect(tw3Balance).to.equal(royaltyAmount / 10n);
+
+            // Publisher collects royalties
+            const publisherInitialBalance = await ethers.provider.getBalance(publisher.address);
+            const collectTx = await dataPointRegistry.connect(publisher).collectRoyalties(
+                publisherBalance, 
+                publisher.address
+            );
+            const collectReceipt = await collectTx.wait();
+            // const gasUsedForCollection = collectReceipt ? collectReceipt.gasUsed * ((await ethers.provider.getFeeData()).gasPrice ?? 3000000n) : 0n;
+            
+            // Verify publisher received royalties (accounting for gas costs)
+            const publisherFinalBalance = await ethers.provider.getBalance(publisher.address);
+            expect(publisherFinalBalance).to.be.gt(publisherInitialBalance);
+
+            // TW3 collects royalties
+            const tw3InitialBalance = await ethers.provider.getBalance(tw3.address);
+            const tw3CollectTx = await dataPointRegistry.connect(tw3).collectRoyalties(
+                tw3Balance, 
+                tw3.address
+            );
+            const tw3CollectReceipt = await tw3CollectTx.wait();
+            // const tw3GasUsedForCollection = tw3CollectReceipt ? tw3CollectReceipt.gasUsed * (await ethers.provider.getFeeData()).gasPrice : 0n;
+            
+            // Verify TW3 received royalties (accounting for gas costs)
+            const tw3FinalBalance = await ethers.provider.getBalance(tw3.address);
+            expect(tw3FinalBalance).to.be.gt(tw3InitialBalance);
         });
 
+        it("Should not allow collecting more than available balance", async function () {
+            const { dataPointRegistry, publisher } = await loadFixture(deployWebStorageFixture);
+            
+            const balance = await dataPointRegistry.royaltyBalance(publisher.address);
+            
+            await expect(
+                dataPointRegistry.connect(publisher).collectRoyalties(
+                    balance + 1n, 
+                    publisher.address
+                )
+            ).to.be.revertedWith("DPR: Insufficient balance");
+        });
+
+        it("Should not charge royalties for publisher's own writes", async function () {
+            const { dataPointRegistry, typeMap, publisher } = await loadFixture(deployWebStorageFixture);
+            
+            const dataPoint = {
+                structure: {
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
+                    charset: await typeMap.getTypeBytes(1, "utf-8"),
+                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+                },
+                data: ethers.toUtf8Bytes("Hello, World!"),
+            };
+
+            // First write by publisher
+            await dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address);
+            
+            // Second write by same publisher should not require royalty payment
+            await expect(
+                dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address)
+            ).to.not.be.reverted;
+        });
     });
 });

@@ -5,8 +5,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 enum TypeCategory {
     MIME_TYPE,
-    ENCODING_TYPE,
-    LOCATION_TYPE
+    CHARSET_TYPE,
+    LOCATION_TYPE,
+    LANGUAGE_TYPE
 }
 
 contract TypeMap is Ownable {
@@ -15,6 +16,10 @@ contract TypeMap is Ownable {
         private typeStringToBytes;
     mapping(TypeCategory => mapping(bytes2 => string))
         private typeBytesToString;
+    
+    mapping(TypeCategory => uint16) private typeEnumCount;
+    mapping(TypeCategory => mapping(uint16 => bytes2))
+        private typeEnumToBytes;
 
     constructor() Ownable(msg.sender) {
         // Initialize MIME types
@@ -71,20 +76,20 @@ contract TypeMap is Ownable {
         setType(TypeCategory.MIME_TYPE, "multipart/byteranges", 0x7062);
 
         // Initialize encoding types
-        setType(TypeCategory.ENCODING_TYPE, "utf-8", 0x7508);
-        setType(TypeCategory.ENCODING_TYPE, "utf-16", 0x7516);
-        setType(TypeCategory.ENCODING_TYPE, "utf-32", 0x7532);
-        setType(TypeCategory.ENCODING_TYPE, "utf-32be", 0x7533);
-        setType(TypeCategory.ENCODING_TYPE, "base64", 0x6264);
-        setType(TypeCategory.ENCODING_TYPE, "base64url", 0x6265);
-        setType(TypeCategory.ENCODING_TYPE, "base58", 0x6258);
-        setType(TypeCategory.ENCODING_TYPE, "base32", 0x6232);
-        setType(TypeCategory.ENCODING_TYPE, "hex", 0x6216);
-        setType(TypeCategory.ENCODING_TYPE, "ascii", 0x6173); // Added
-        setType(TypeCategory.ENCODING_TYPE, "iso-8859-1", 0x6973); // Added
-        setType(TypeCategory.ENCODING_TYPE, "latin1", 0x6C31); // Added
-        setType(TypeCategory.ENCODING_TYPE, "utf-7", 0x7507); // Added
-        setType(TypeCategory.ENCODING_TYPE, "ucs-2", 0x7563); // Added
+        setType(TypeCategory.CHARSET_TYPE, "utf-8", 0x7508);
+        setType(TypeCategory.CHARSET_TYPE, "utf-16", 0x7516);
+        setType(TypeCategory.CHARSET_TYPE, "utf-32", 0x7532);
+        setType(TypeCategory.CHARSET_TYPE, "utf-32be", 0x7533);
+        setType(TypeCategory.CHARSET_TYPE, "base64", 0x6264);
+        setType(TypeCategory.CHARSET_TYPE, "base64url", 0x6265);
+        setType(TypeCategory.CHARSET_TYPE, "base58", 0x6258);
+        setType(TypeCategory.CHARSET_TYPE, "base32", 0x6232);
+        setType(TypeCategory.CHARSET_TYPE, "hex", 0x6216);
+        setType(TypeCategory.CHARSET_TYPE, "ascii", 0x6173); // Added
+        setType(TypeCategory.CHARSET_TYPE, "iso-8859-1", 0x6973); // Added
+        setType(TypeCategory.CHARSET_TYPE, "latin1", 0x6C31); // Added
+        setType(TypeCategory.CHARSET_TYPE, "utf-7", 0x7507); // Added
+        setType(TypeCategory.CHARSET_TYPE, "ucs-2", 0x7563); // Added
 
         // Initialize location types (unchanged from previous)
         setType(TypeCategory.LOCATION_TYPE, "datapoint/chunk", 0x0101);
@@ -127,6 +132,8 @@ contract TypeMap is Ownable {
         );
         typeStringToBytes[category][typeName] = typeValue;
         typeBytesToString[category][typeValue] = typeName;
+        typeEnumToBytes[category][typeEnumCount[category]] = typeValue;
+        typeEnumCount[category]++;
     }
 
     /**
@@ -157,5 +164,10 @@ contract TypeMap is Ownable {
         string memory name = typeBytesToString[category][typeValue];
         require(bytes(name).length != 0, "MAP: Type string not found");
         return name;
+    }
+
+    function getTypeEnum(TypeCategory category, uint16 index) public view returns (bytes2) {
+        require(index < typeEnumCount[category], "MAP: Invalid index");
+        return typeEnumToBytes[category][index];
     }
 }
