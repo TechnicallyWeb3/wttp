@@ -4,7 +4,7 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { DataPointStorage, DataPointRegistry, DataPointStorage__factory } from "../typechain-types";
+import { DataPointStorage, Dev_DataPointRegistry, DataPointStorage__factory } from "../typechain-types";
 
 describe("WebStorage", function () {
     async function deployWebStorageFixture() {
@@ -23,7 +23,7 @@ describe("WebStorage", function () {
         const dataPointStorage = await DataPointStorage.deploy();
 
         console.log(`Deploying DataPointRegistry...`);
-        const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
+        const DataPointRegistry = await hre.ethers.getContractFactory("Dev_DataPointRegistry");
         const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
 
         return { statusMap, typeMap, dataPointStorage, dataPointRegistry, tw3, publisher, dev };

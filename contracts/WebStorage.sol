@@ -87,15 +87,6 @@ contract DataPointStorage {
             );
     }
 
-    // function getTotalSize(
-    //     bytes32[] memory _dataPointAddresses
-    // ) public view returns (uint256) {
-    //     uint256 totalSize = 0;
-    //     for (uint256 i = 0; i < _dataPointAddresses.length; i++) {
-    //         totalSize += dataPoints[_dataPointAddresses[i]].data.length;
-    //     }
-    //     return totalSize;
-    // }
 }
 
 contract DataPointRegistry {
@@ -125,24 +116,6 @@ contract DataPointRegistry {
         return _dps;
     }
 
-    function _validateDataPoint(
-        DataPoint memory _dataPoint,
-        bytes2 expectedLocation
-    ) internal pure returns (bool) {
-        // universal checks
-        require(
-            _dataPoint.structure.location == expectedLocation,
-            "DPR: Unexpected location"
-        );
-        require(expectedLocation != 0x0000, "DPR: Location required");
-        require(
-            _dataPoint.data.length > 0,
-            "DPR: Chunk data must be greater than 0"
-        );
-
-        return true;
-    }
-
     function _getRoyaltyAddress(
         bytes32 _dataPointAddress
     ) internal view virtual returns (address) {
@@ -150,7 +123,7 @@ contract DataPointRegistry {
     }
 
     function _royaltyGasRate() internal pure virtual returns (uint256) {
-        return 100000000; // 0.01 gwei
+        return 10000000; // 0.01 gwei
     }
 
     function getRoyalty(

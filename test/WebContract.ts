@@ -4,707 +4,215 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { ERCXXXX, DataPointRegistry, DataPointStorage } from "../typechain-types";
+import { Dev_WTTPPermissions, Dev_WTTPStorage, Dev_WTTPBaseMethods, DataPointRegistry, DataPointStorage } from "../typechain-types";
 
 describe("WebContract (WTTP/2.0)", function () {
     async function deployFixture() {
-        const [owner, user1, user2] = await hre.ethers.getSigners();
+        const [tw3, user1, user2] = await hre.ethers.getSigners();
 
         const DataPointStorage = await hre.ethers.getContractFactory("DataPointStorage");
         const dataPointStorage = await DataPointStorage.deploy();
 
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
-        const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target);
+        const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
 
-        const ERCXXXX = await hre.ethers.getContractFactory("ERCXXXX");
-        const wttpServer = await ERCXXXX.deploy(dataPointRegistry.target, owner.address);
+        const WTTPPermissions = await hre.ethers.getContractFactory("Dev_WTTPPermissions");
+        const wttpPermissions = await WTTPPermissions.deploy();
 
-        return { dataPointStorage, dataPointRegistry, wttpServer, owner, user1, user2 };
+        const WTTPStorage = await hre.ethers.getContractFactory("Dev_WTTPStorage");
+        const wttpStorage = await WTTPStorage.deploy(dataPointRegistry.target, tw3.address);
+
+        const WTTPBaseMethods = await hre.ethers.getContractFactory("Dev_WTTPBaseMethods");
+        const wttpBaseMethods = await WTTPBaseMethods.deploy(dataPointRegistry.target, tw3.address);
+
+        return { dataPointStorage, dataPointRegistry, wttpPermissions, wttpStorage, wttpBaseMethods, tw3, user1, user2 };
     }
 
-    describe("Basic Operations", function () {
-        it("Should create a web file with PUT", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
+    describe("WTTP Permissions", function () {
+        it("Should correctly manage site admin roles", async function () {
 
-            // Set header info to allow PUT method
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
+            this.slow(2000);
 
-            await wttpServer.setHeader("/index.html", headerInfo);
+            const { wttpPermissions, tw3, user1 } = await loadFixture(deployFixture);
+            
+            // tw3 should be site admin (set in constructor)
+            expect(await wttpPermissions.isSiteAdmin(tw3.address)).to.be.true;
+            
+            // user1 should not be site admin
+            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.false;
+            
+            // tw3 can grant site admin role
+            await wttpPermissions.grantRole(await wttpPermissions.siteAdmin(), user1.address);
+            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
+        });
 
-            await expect(wttpServer.PUT(
-                "/index.html",
-                "0x7468", // text/html
-                "0x7574", // utf-8
-                "0x6463", // datapoint/chunk
-                owner.address,
-                ethers.toUtf8Bytes("<html><body>Hello, World!</body></html>"),
-                { value: 0 }
+        it("Should prevent site admins from creating other site admins", async function () {
+            const { wttpPermissions, tw3, user1, user2 } = await loadFixture(deployFixture);
+            
+            // Grant site admin role to user1
+            await wttpPermissions.grantRole(await wttpPermissions.siteAdmin(), user1.address);
+            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
+            
+            // User1 should not be able to grant site admin role to user2
+            await expect(
+                wttpPermissions.connect(user1).grantRole(await wttpPermissions.siteAdmin(), user2.address)
+            ).to.be.reverted;
+            
+            expect(await wttpPermissions.isSiteAdmin(user2.address)).to.be.false;
+        });
+
+        it("Should prevent resource admins from creating roles", async function () {
+            const { wttpPermissions, tw3, user1 } = await loadFixture(deployFixture);
+            
+            // Create a resource role and grant it to user1
+            const roleName = "TEST_RESOURCE_ADMIN";
+            await wttpPermissions.createResourceRole(roleName);
+            const roleHash = ethers.id(roleName);
+            await wttpPermissions.grantRole(roleHash, user1.address);
+            
+            // User1 should not be able to create new roles
+            await expect(
+                wttpPermissions.connect(user1).createResourceRole("NEW_ROLE")
+            ).to.be.reverted;
+        });
+
+        it("Should allow creating resource-specific roles", async function () {
+            const { wttpPermissions, tw3 } = await loadFixture(deployFixture);
+            
+            const roleName = "TEST_RESOURCE_ADMIN";
+            await wttpPermissions.createResourceRole(roleName);
+            
+            const roleHash = ethers.id(roleName);
+            expect(await wttpPermissions.hasRole(roleHash, tw3.address)).to.be.true;
+        });
+    });
+
+    describe("WTTP Storage", function () {
+        describe("Resource Management", function () {
+            it("Should create resource and verify data integrity", async function () {
+                const { dataPointStorage, wttpStorage, tw3 } = await loadFixture(deployFixture);
+
+                const content = "<html><body>Hello, World!</body></html>";
+                await wttpStorage.createResource(
+                    "/test.html",
+                    ethers.hexlify("0x7468"), // text/html
+                    ethers.hexlify("0x7574"), // utf-8
+                    ethers.hexlify("0x0101"), // datapoint/chunk
+                    tw3.address,
+                    ethers.toUtf8Bytes(content)
+                );
+
+                // Verify data integrity
+                const locations = await wttpStorage.readLocation("/test.html");
+                const dataPoint = await dataPointStorage.readDataPoint(locations[0]);
+                const metadata = await wttpStorage.readMetadata("/test.html");
+                
+                expect(ethers.toUtf8String(dataPoint.data)).to.equal(content);
+                expect(metadata.version).to.equal(1);
+                expect(ethers.toUtf8String(dataPoint.data).length).to.equal(metadata.size);
+            });
+        });
+    });
+
+    describe("WTTP Methods", function () {
+        it("Should allow site admin to PUT", async function () {
+            const { wttpBaseMethods, tw3 } = await loadFixture(deployFixture);
+
+            const content = "<html><body>Hello, World!</body></html>";
+            await expect(wttpBaseMethods.PUT(
+                { path: "/test.html", protocol: "WTTP/2.0" },
+                ethers.hexlify("0x7468"), // text/html
+                ethers.hexlify("0x7574"), // utf-8
+                ethers.hexlify("0x0101"), // datapoint/chunk
+                tw3.address,
+                ethers.toUtf8Bytes(content)
             )).to.not.be.reverted;
 
-            const [response, headerResponse, content] = await wttpServer.GET("/index.html", 0, 0);
-            expect(response.code).to.equal(200);
-            expect(response.protocol).to.equal("WTTP/2.0");
-            expect(ethers.toUtf8String(content)).to.equal("<html><body>Hello, World!</body></html>");
+            // Add debug output
+            const headResponse = await wttpBaseMethods.HEAD({ path: "/test.html", protocol: "WTTP/2.0" });
+            // console.log("HEAD Response:", headResponse);
+
+            expect(headResponse.metadata.size).to.equal(content.length);
+            expect(headResponse.metadata.version).to.equal(1);
+
+            // Add debug output for LOCATE
+            const locations = await wttpBaseMethods.LOCATE({ path: "/test.html", protocol: "WTTP/2.0" });
+            // console.log("Locations array:", locations);
+            // console.log("Locations length:", locations);
+            expect(locations.dataPoints.length).to.equal(1);
         });
 
-        it("Should return correct HEAD response", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
+        it("Should allow admin to PUT then PATCH multi-part resources", async function () {
+            const { wttpBaseMethods, dataPointStorage, tw3 } = await loadFixture(deployFixture);
 
-            const headerInfo = {
-                cache: {
-                    maxAge: 3600,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
+            const part1 = "<html><body>First part";
+            const part2 = " Second part";
+            const part3 = " Third part</body></html>";
 
-            await wttpServer.setHeader("/test.html", headerInfo);
-
-            await wttpServer.PUT(
-                "/test.html",
-                "0x7468", // text/html
-                "0x7574", // utf-8
-                "0x6463", // datapoint/chunk
-                owner.address,
-                ethers.toUtf8Bytes("<html></html>"),
-                { value: 0 }
+            // Add debug output for initial PUT
+            await wttpBaseMethods.PUT(
+                { path: "/multipart.html", protocol: "WTTP/2.0" },
+                ethers.hexlify("0x7468"),
+                ethers.hexlify("0x7574"),
+                ethers.hexlify("0x0101"),
+                tw3.address,
+                ethers.toUtf8Bytes(part1)
             );
 
-            const [requestLine, headerResponse] = await wttpServer.HEAD("/test.html");
+            let headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            // console.log("\nAfter PUT:", {
+            //     size: headResponse.metadata.size,
+            //     version: headResponse.metadata.version
+            // });
 
-            expect(requestLine.protocol).to.equal("WTTP/2.0");
-            expect(requestLine.code).to.equal(200);
-            expect(headerResponse.headerInfo.cache.maxAge).to.equal(3600);
-            expect(headerResponse.contentLength).to.equal(13); // length of "<html></html>"
-        });
-
-        it("Should enforce method permissions", async function () {
-            const { wttpServer, owner, user1 } = await loadFixture(deployFixture);
-
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: false, // Disable PUT
-                    PATCH: false,
-                    DELETE: false
-                }
-            };
-
-            await wttpServer.setHeader("/restricted.html", headerInfo);
-
-            // Should fail for non-admin when PUT is disabled
-            await expect(wttpServer.connect(user1).PUT(
-                "/restricted.html",
-                "0x7468",
-                "0x7574",
-                "0x6463",
-                user1.address,
-                ethers.toUtf8Bytes("test"),
-                { value: 0 }
-            )).to.be.revertedWith("PUT method not allowed");
-
-            // Should work for admin even when PUT is disabled
-            await expect(wttpServer.PUT(
-                "/restricted.html",
-                "0x7468",
-                "0x7574",
-                "0x6463",
-                owner.address,
-                ethers.toUtf8Bytes("test"),
-                { value: 0 }
-            )).to.not.be.reverted;
-        });
-
-        it("Should respect immutable flag", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
-
-            // Initial creation should work
-            await wttpServer.PUT(
-                "/immutable.html",
-                "0x7468",
-                "0x7574",
-                "0x6463",
-                owner.address,
-                ethers.toUtf8Bytes("immutable content"),
-                { value: 0 }
-            );
-
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: true, // Set as immutable
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
-
-            await wttpServer.setHeader("/immutable.html", headerInfo);
-
-            // Subsequent modifications should fail
-            await expect(wttpServer.PATCH(
-                "/immutable.html",
-                ethers.toUtf8Bytes("modified content"),
-                0,
-                owner.address,
-                { value: 0 }
-            )).to.be.revertedWith("WC/PATCH: Path is immutable, cannot PATCH");
-
-            await expect(wttpServer.DELETE(
-                "/immutable.html"
-            )).to.be.revertedWith("WC/DELETE: Path is immutable, cannot DELETE");
-        });
-    });
-
-    describe("Resource Admin Management", function () {
-        it("Should manage resource-specific admins", async function () {
-            const { wttpServer, owner, user1 } = await loadFixture(deployFixture);
-
-            const adminRole = ethers.id("RESOURCE_ADMIN_ROLE");
-            
-            // Grant resource admin role
-            await wttpServer.setResourceAdmin("/admin-test.html", adminRole, true);
-            await wttpServer.grantRole(adminRole, user1.address);
-
-            // User1 should now have admin rights for this resource
-            expect(await wttpServer.isResourceAdmin("/admin-test.html", user1.address)).to.be.true;
-
-            // Remove resource admin
-            await wttpServer.setResourceAdmin("/admin-test.html", adminRole, false);
-            expect(await wttpServer.isResourceAdmin("/admin-test.html", user1.address)).to.be.false;
-        });
-    });
-
-    describe("Data Reconstruction Tests", function () {
-        it("Should correctly reconstruct multi-chunk data", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
-
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
-
-            await wttpServer.setHeader("/multi-chunk.txt", headerInfo);
-
-            // Create initial chunk
-            await wttpServer.PUT(
-                "/multi-chunk.txt",
-                "0x7470", // text/plain
-                "0x7574", // utf-8
-                "0x0101", // datapoint/chunk with chunking enabled
-                owner.address,
-                ethers.toUtf8Bytes("Chunk1"),
-                { value: 0 }
-            );
-
-            // Add additional chunks
-            await wttpServer.PATCH(
-                "/multi-chunk.txt",
-                ethers.toUtf8Bytes("Chunk2"),
+            // PATCH chunk 1
+            await wttpBaseMethods.PATCH(
+                { path: "/multipart.html", protocol: "WTTP/2.0" },
+                ethers.toUtf8Bytes(part2),
                 1,
-                owner.address,
-                { value: 0 }
+                tw3.address
             );
 
-            await wttpServer.PATCH(
-                "/multi-chunk.txt",
-                ethers.toUtf8Bytes("Chunk3"),
+            headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            // console.log("\nAfter PATCH 1:", {
+            //     size: headResponse.metadata.size,
+            //     version: headResponse.metadata.version
+            // });
+
+            // PATCH chunk 2
+            await wttpBaseMethods.PATCH(
+                { path: "/multipart.html", protocol: "WTTP/2.0" },
+                ethers.toUtf8Bytes(part3),
                 2,
-                owner.address,
-                { value: 0 }
+                tw3.address
             );
 
-            // Get full content
-            const [response, headerResponse, content] = await wttpServer.GET("/multi-chunk.txt", 0, 0);
-            expect(ethers.toUtf8String(content)).to.equal("Chunk1Chunk2Chunk3");
-            expect(headerResponse.contentLength).to.equal(18); // length of all chunks combined
-        });
+            headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            // console.log("\nAfter PATCH 2:", {
+            //     size: headResponse.metadata.size,
+            //     version: headResponse.metadata.version
+            // });
 
-        it("Should handle partial content retrieval", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
-
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
-
-            await wttpServer.setHeader("/partial.txt", headerInfo);
-
-            // Create a file with multiple chunks
-            await wttpServer.PUT(
-                "/partial.txt",
-                "0x7470", // text/plain
-                "0x7574", // utf-8
-                "0x0101", // datapoint/chunk with chunking enabled
-                owner.address,
-                ethers.toUtf8Bytes("First chunk"),
-                { value: 0 }
-            );
-
-            await wttpServer.PATCH(
-                "/partial.txt",
-                ethers.toUtf8Bytes("Middle chunk"),
-                1,
-                owner.address,
-                { value: 0 }
-            );
-
-            await wttpServer.PATCH(
-                "/partial.txt",
-                ethers.toUtf8Bytes("Last chunk"),
-                2,
-                owner.address,
-                { value: 0 }
-            );
-
-            // Get specific chunks
-            const [requestLine1, _, content1] = await wttpServer.GET("/partial.txt", 0, 1);
-            expect(ethers.toUtf8String(content1)).to.equal("First chunk");
-            expect(requestLine1.code).to.equal(206); // Partial Content
-
-            const [requestLine2, __, content2] = await wttpServer.GET("/partial.txt", 1, 2);
-            expect(ethers.toUtf8String(content2)).to.equal("Middle chunk");
-            expect(requestLine2.code).to.equal(206);
-        });
-
-        it("Should handle large file reconstruction", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
+            let  locations = await wttpBaseMethods.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            // console.log("\nFinal locations:", locations);
+            // console.log("Locations length:", locations.dataPoints.length);
             
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
+            // Verify final state
+            headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            expect(headResponse.metadata.size).to.equal(part1.length + part2.length + part3.length);
+            expect(headResponse.metadata.version).to.equal(3);
 
-            await wttpServer.setHeader("/large-file.txt", headerInfo);
+            // Verify all chunks are present
+            locations = await wttpBaseMethods.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            expect(locations.dataPoints.length).to.equal(3);
 
-            const chunkSize = 32000; // 32KB chunks
-            const numberOfChunks = 4; // Total size will be 128KB
-            
-            // Create initial chunk
-            const initialChunk = Buffer.alloc(chunkSize, "A");
-            await wttpServer.PUT(
-                "/large-file.txt",
-                "0x7470", // text/plain
-                "0x7574", // utf-8
-                "0x0101", // datapoint/chunk with chunking enabled
-                owner.address,
-                initialChunk,
-                { value: 0 }
-            );
-
-            // Add additional chunks with different content
-            for (let i = 1; i < numberOfChunks; i++) {
-                const chunk = Buffer.alloc(chunkSize, String.fromCharCode(65 + i)); // B, C, D...
-                await wttpServer.PATCH(
-                    "/large-file.txt",
-                    chunk,
-                    i,
-                    owner.address,
-                    { value: 0 }
-                );
+            // Verify data integrity
+            let result = "";
+            for (let i = 0; i < 3; i++) {
+                const data = await dataPointStorage.readDataPoint(locations.dataPoints[i]);
+                result += ethers.toUtf8String(data.data);
             }
-
-            // Verify total size
-            const [_, headerResponse] = await wttpServer.HEAD("/large-file.txt");
-            expect(headerResponse.contentLength).to.equal(128000); // 128KB
-        });
-    });
-
-    describe("Large File Performance Tests", function () {
-        // Increase the test timeout since this is a large operation
-        this.timeout(120000); // 2 minutes
-
-        it("Should handle 10MB file with 16KB chunks efficiently", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
-
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
-
-            // Performance tracking
-            const metrics = {
-                totalWriteTimeMs: 0,
-                totalReadTimeMs: 0,
-                totalGasUsed: BigInt(0),
-                numberOfChunks: 0,
-                averageWriteTimePerChunkMs: 0,
-                averageReadTimePerChunkMs: 0,
-                averageGasPerChunk: BigInt(0)
-            };
-
-            // File configuration
-            const CHUNK_SIZE = 16 * 1024; // 16KB
-            const TOTAL_SIZE = 10 * 1024 * 1024; // 10MB
-            const NUMBER_OF_CHUNKS = Math.ceil(TOTAL_SIZE / CHUNK_SIZE);
-            metrics.numberOfChunks = NUMBER_OF_CHUNKS;
-
-            console.log("\nStarting 10MB file test with 16KB chunks");
-            console.log(`Total chunks to process: ${NUMBER_OF_CHUNKS}`);
-
-            await wttpServer.setHeader("/large-file-test.dat", headerInfo);
-
-            // Create and write chunks
-            console.log("\nWriting chunks...");
-            const writeStartTime = Date.now();
-
-            // Initial PUT with chunk number as content
-            const initialChunk = Buffer.alloc(CHUNK_SIZE, 0);
-            initialChunk.write(`Chunk_0_`);
-            const initialTx = await wttpServer.PUT(
-                "/large-file-test.dat",
-                "0x6264", // binary/data
-                "0x7574", // utf-8
-                "0x0101", // datapoint/chunk with chunking enabled
-                owner.address,
-                initialChunk,
-                { value: 0 }
-            );
-            const initialReceipt = await initialTx.wait() || { gasUsed: BigInt(0) };
-            metrics.totalGasUsed += initialReceipt.gasUsed;
-
-            // PATCH remaining chunks
-            for (let i = 1; i < NUMBER_OF_CHUNKS; i++) {
-                if (i % 100 === 0) {
-                    console.log(`Writing chunk ${i}/${NUMBER_OF_CHUNKS}`);
-                }
-
-                const chunk = Buffer.alloc(CHUNK_SIZE, 0);
-                chunk.write(`Chunk_${i}_`); // Each chunk has its unique number
-
-                const tx = await wttpServer.PATCH(
-                    "/large-file-test.dat",
-                    chunk,
-                    i,
-                    owner.address,
-                    { value: 0 }
-                );
-                const receipt = await tx.wait() || { gasUsed: BigInt(0) };
-                metrics.totalGasUsed += receipt.gasUsed;
-            }
-
-            metrics.totalWriteTimeMs = Date.now() - writeStartTime;
-            metrics.averageWriteTimePerChunkMs = metrics.totalWriteTimeMs / NUMBER_OF_CHUNKS;
-            metrics.averageGasPerChunk = metrics.totalGasUsed / BigInt(NUMBER_OF_CHUNKS);
-
-            // Verify file size
-            const [_, headerResponse] = await wttpServer.HEAD("/large-file-test.dat");
-            expect(headerResponse.contentLength).to.equal(TOTAL_SIZE);
-
-            // Read and verify chunks
-            console.log("\nReading chunks...");
-            const readStartTime = Date.now();
-
-            // Read chunks in batches of 8 to avoid timeout
-            const BATCH_SIZE = 8;
-            for (let i = 0; i < NUMBER_OF_CHUNKS; i += BATCH_SIZE) {
-                const endChunk = Math.min(i + BATCH_SIZE, NUMBER_OF_CHUNKS);
-                if (i % 100 === 0) {
-                    console.log(`Reading chunks ${i}-${endChunk}/${NUMBER_OF_CHUNKS}`);
-                }
-
-                const [requestLine, __, content] = await wttpServer.GET(
-                    "/large-file-test.dat",
-                    i,
-                    endChunk
-                );
-                expect(requestLine.code).to.equal(206); // Partial content
-                // expect(content.length).to.equal((endChunk - i) * CHUNK_SIZE);
-            }
-
-            metrics.totalReadTimeMs = Date.now() - readStartTime;
-            metrics.averageReadTimePerChunkMs = metrics.totalReadTimeMs / NUMBER_OF_CHUNKS;
-
-            
-            // Get resource data and calculate size
-            const resourceData = await wttpServer.getResourceData("/large-file-test.dat");
-            const actualChunkCount = resourceData.length;
-            const actualFileSize = resourceData.length * CHUNK_SIZE;
-
-            // Log performance metrics
-            console.log("\nPerformance Metrics:");
-            console.log("-------------------");
-            console.log(`Total Chunks: ${metrics.numberOfChunks}`);
-            console.log(`Actual Chunks in Storage: ${actualChunkCount}`);
-            console.log(`Actual File Size: ${actualFileSize} bytes`);
-            console.log(`Total Write Time: ${metrics.totalWriteTimeMs}ms`);
-            console.log(`Total Read Time: ${metrics.totalReadTimeMs}ms`);
-            console.log(`Average Write Time per Chunk: ${metrics.averageWriteTimePerChunkMs.toFixed(2)}ms`);
-            console.log(`Average Read Time per Chunk: ${metrics.averageReadTimePerChunkMs.toFixed(2)}ms`);
-            console.log(`Total Gas Used: ${metrics.totalGasUsed.toString()}`);
-            console.log(`Average Gas per Chunk: ${metrics.averageGasPerChunk.toString()}`);
-            console.log("-------------------");
-
-            // Optional: Save metrics to a file
-            const fs = require('fs');
-            const metricsOutput = {
-                ...metrics,
-                timestamp: new Date().toISOString(),
-                totalGasUsed: metrics.totalGasUsed.toString(),
-                averageGasPerChunk: metrics.averageGasPerChunk.toString(),
-                chunkSize: CHUNK_SIZE,
-                totalSize: TOTAL_SIZE
-            };
-
-            fs.writeFileSync(
-                'performance-metrics.json',
-                JSON.stringify(metricsOutput, null, 2)
-            );
-        });
-
-        it("Should test maximum GET request size", async function () {
-            const { wttpServer, owner } = await loadFixture(deployFixture);
-
-            const headerInfo = {
-                cache: {
-                    maxAge: 0,
-                    sMaxage: 0,
-                    noStore: false,
-                    noCache: false,
-                    immutableFlag: false,
-                    mustRevalidate: false,
-                    proxyRevalidate: false,
-                    staleWhileRevalidate: 0,
-                    staleIfError: 0,
-                    publicFlag: true,
-                    privateFlag: false
-                },
-                methods: {
-                    GET: true,
-                    HEAD: true,
-                    PUT: true,
-                    PATCH: true,
-                    DELETE: true
-                }
-            };
-
-            const CHUNK_SIZE = 16 * 1024; // 16KB chunks
-            let currentBatchSize = 8; // Start with 8 chunks
-            let maxSuccessfulBatchSize = 0;
-            let totalChunks = 50; // We'll create 50 chunks (16MB total)
-
-            console.log("\nTesting maximum GET request size");
-            console.log(`Chunk size: ${CHUNK_SIZE} bytes`);
-            console.log(`Total chunks to create: ${totalChunks}`);
-
-            await wttpServer.setHeader("/max-get-test.dat", headerInfo);
-
-            // Create initial chunk
-            console.log("\nCreating initial chunk...");
-            const initialChunk = Buffer.alloc(CHUNK_SIZE, 0);
-            initialChunk.write(`Chunk_0_`);
-            await wttpServer.PUT(
-                "/max-get-test.dat",
-                "0x6264", // binary/data
-                "0x7574", // utf-8
-                "0x0101", // datapoint/chunk with chunking enabled
-                owner.address,
-                initialChunk,
-                { value: 0 }
-            );
-
-            // Create remaining chunks
-            console.log("Creating remaining chunks...");
-            for (let i = 1; i < totalChunks; i++) {
-                if (i % 100 === 0) {
-                    console.log(`Creating chunk ${i}/${totalChunks}`);
-                }
-
-                const chunk = Buffer.alloc(CHUNK_SIZE, 0);
-                chunk.write(`Chunk_${i}_`);
-                await wttpServer.PATCH(
-                    "/max-get-test.dat",
-                    chunk,
-                    i,
-                    owner.address,
-                    { value: 0 }
-                );
-            }
-
-            console.log("\nTesting GET requests with increasing batch sizes...");
-            
-            // Test increasingly large GET requests
-            while (currentBatchSize <= totalChunks) {
-                try {
-                    
-                    const [response, _, content] = await wttpServer.GET(
-                        "/max-get-test.dat",
-                        0,
-                        currentBatchSize
-                    );
-                    
-                    maxSuccessfulBatchSize = currentBatchSize;
-
-                    // Increase batch size for next attempt
-                    currentBatchSize += 1;
-
-
-                } catch (error) {
-                    console.log(`\nFailed at ${currentBatchSize} chunks`);
-                    console.log(`Maximum successful batch size: ${maxSuccessfulBatchSize} chunks`);
-                    console.log(`Maximum successful data size: ${(maxSuccessfulBatchSize * CHUNK_SIZE / 1024 / 1024).toFixed(2)}MB`);
-                    console.log(`Error: ${error.message}`);
-                    break;
-                }
-            }
-
-            // Log final results
-            console.log("\nFinal Results:");
-            console.log("-------------------");
-            console.log(`Maximum successful chunks: ${maxSuccessfulBatchSize}`);
-            console.log(`Maximum successful data size: ${(maxSuccessfulBatchSize * CHUNK_SIZE / 1024 / 1024).toFixed(2)}MB`);
-            console.log(`Chunk size used: ${CHUNK_SIZE} bytes`);
-            console.log("-------------------");
-
-            // Save results to file
-            const fs = require('fs');
-            const results = {
-                timestamp: new Date().toISOString(),
-                maxSuccessfulChunks: maxSuccessfulBatchSize,
-                maxSuccessfulDataSize: (maxSuccessfulBatchSize * CHUNK_SIZE / 1024 / 1024).toFixed(2) + "MB",
-                chunkSize: CHUNK_SIZE,
-                totalChunks: totalChunks
-            };
-
-            fs.writeFileSync(
-                'max-get-test-results.json',
-                JSON.stringify(results, null, 2)
-            );
+            expect(result).to.equal(part1 + part2 + part3);
         });
     });
 }); 

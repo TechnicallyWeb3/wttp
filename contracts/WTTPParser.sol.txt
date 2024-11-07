@@ -5,25 +5,6 @@ import "./WebStorage.sol";
 import "./WebContract.sol";
 
 contract WTTPMethods {
-    
-    struct RequestLine {
-        string protocol;
-        string path;
-    }
-
-    struct ResponseLine {
-        string protocol;
-        uint16 code;
-    }
-
-    struct RequestHeader {
-        address host;
-        bytes2[] accept;
-        bytes2[] acceptCharset;
-        bytes4[] acceptLanguage;
-        uint256 ifModifiedSince;
-        bytes32 ifNoneMatch;
-    }
 
     function _methodAllowed(uint16 _methods, Method _method) internal view returns (bool) {
         uint16 methodBit = uint16(1 << uint8(_method)); // Create a bitmask for the method
@@ -69,14 +50,18 @@ contract WTTPMethods {
     }
 
     function _getLocationData(
-        string memory _path
+        RequestLine memory requestLine,
+        RequestHeader memory requestHeader
     ) internal view returns (bytes memory locationData) {
+        WTTPBaseMethods host = WTTPBaseMethods(requestHeader.host);
+        DataPointStorage DPS_ = host.DPS_();
+        bytes32[] memory location = _readLocation(requestLine.path);
         if (
             uint8(
-                DPS_.readDataPoint(_readLocation(_path)[0]).structure.location[1]
+                DPS_.readDataPoint(_readLocation(requestLine.path)[0]).structure.location[1]
             ) > 0x01
         ) {
-            locationData = DPS_.readDataPoint(_readLocation(_path)[0]).data;
+            locationData = DPS_.readDataPoint(_readLocation(requestLine.path)[0]).data;
         }
     }
 
@@ -105,7 +90,7 @@ contract WTTPMethods {
         if (metadata.size == 0) {
             return (
                 ResponseLine({
-                    protocol: WTTP_VERSION,
+                    protocol: RequestLine.protocol,
                     code: 404
                 }),
                 headerResponse
@@ -130,7 +115,7 @@ contract WTTPMethods {
     )
         public
         view
-        returns (RequestLine memory, HeaderResponse memory, bytes memory)
+        returns (RequestLine memory, HEADResponse memory, bytes memory)
     {
         ResourceMetadata memory metadata = INFO(_path);
         HeaderResponse memory headerResponse = _assembleHEADResponse(_path);

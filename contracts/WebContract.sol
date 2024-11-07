@@ -45,7 +45,6 @@ struct ResourceMetadata {
     uint256 size;
     uint256 version;
     uint256 modifiedDate;
-    uint16 redirect;
 }
 
 struct CacheControl {
@@ -73,23 +72,50 @@ enum Method {
     CONNECT,
     TRACE,
     LOCATE,
-    DEFINE,
-    INFO
+    DEFINE
+}
+
+function methodsToMask(Method[] memory methods) pure returns (uint16) {
+    uint16 mask = 0;
+    for (uint i = 0; i < methods.length; i++) {
+        mask |= uint16(1 << uint8(methods[i]));
+    }
+    return mask;
+}
+
+struct Redirect {
+    uint16 code;
+    string location;
 }
 
 struct HeaderInfo {
     CacheControl cache;
     uint16 methods;
+    Redirect redirect;
     bytes32 resourceAdmin;
 }
 
 abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
-    DataPointRegistry internal DPR_;
+    DataPointRegistry public DPR_;
     DataPointStorage internal DPS_;
 
-    constructor(address _dpr, address _owner) WTTPPermissions(_owner) {
+    constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPPermissions(_owner) {
         DPR_ = DataPointRegistry(_dpr);
         DPS_ = DPR_.DPS_();
+
+        // If header is not provided, set default values
+        if (_header.methods == 0) {
+            _header = HeaderInfo({
+                cache: CacheControl(0, 0, false, false, false, false, false, 0, 0, false, false),
+                methods: 2913,
+                redirect: Redirect(0, ""),
+                resourceAdmin: bytes32(0)
+            });
+        }
+
+        bytes32 headerPath = keccak256(abi.encode(_header));
+        headerPaths["*"] = headerPath;
+        headers[headerPath] = _header;
     }
 
     /// @notice Checks if an address has admin rights for a specific resource
@@ -137,7 +163,6 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
     modifier pathDoesNotExist(string memory _path) {
         bytes memory path = bytes(_path);
         require(path.length > 0, "WS/pathDoesNotExist: Invalid path");
-        require(keccak256(path) != keccak256(bytes("*")), "WS/pathDoesNotExist: Wildcard does not exist");
         require(
             resources[_path].length == 0,
             "WS/pathDoesNotExist: Path already exists"
@@ -149,8 +174,7 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
     // defines a resource header
     function _writeHeader(
         string memory _path,
-        HeaderInfo memory _header,
-        uint16 _redirect
+        HeaderInfo memory _header
     )
         internal
         virtual
@@ -169,9 +193,7 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
             headers[headerPath] = _header;
         }
 
-        resourceMetadata[_path].redirect = _redirect;
-
-        emit HeaderUpdated(_path, _header, _redirect);
+        emit HeaderUpdated(_path, _header, _header.redirect);
     }
 
     // Returns all the datapoint addresses for a given resource
@@ -187,7 +209,7 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         bytes32 headerPath = headerPaths[_path];
 
         if (headerPath == bytes32(0)) {
-            header = headers[bytes32("*")];
+            header = headers[headerPaths["*"]];
         } else {
             header = headers[headerPath];
         }
@@ -314,15 +336,37 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
     }
 
     // Events
-    event HeaderUpdated(string path, HeaderInfo header, uint16 redirect);
+    event HeaderUpdated(string path, HeaderInfo header, Redirect redirect);
     event ResourceCreated(string path, uint256 size, address publisher);
     event ResourceUpdated(string path, uint256 chunk, address publisher);
     event ResourceDeleted(string path);
 }
 
-struct InfoResponse {
+struct RequestLine {
+    string protocol;
+    string path;
+}
+
+struct ResponseLine {
+    string protocol;
+    uint16 code;
+}
+
+struct HEADResponse {
+    ResponseLine responseLine;
     HeaderInfo headerInfo;
     ResourceMetadata metadata;
+    bytes32 etag;
+}
+
+struct LOCATEResponse {
+    HEADResponse head;
+    bytes32[] dataPoints;
+}
+
+struct PUTResponse {
+    HEADResponse head;
+    bytes32 dataPointAddress;
 }
 
 abstract contract WTTPBaseMethods is WTTPStorage {
@@ -338,68 +382,128 @@ abstract contract WTTPBaseMethods is WTTPStorage {
         return true;
     }
 
-    constructor(address _dpr, address _owner) WTTPStorage(_dpr, _owner) {}
-
-    modifier methodAllowed(string memory _path, Method _method) {
+    constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPStorage(_dpr, _owner, _header) {}
+    
+    function _methodAllowed(string memory _path, Method _method) internal view returns (bool) {
         uint16 methodBit = uint16(1 << uint8(_method)); // Create a bitmask for the method
-        require(
-            (_readHeader(_path).methods & methodBit != 0) ||
-                _isResourceAdmin(_path, msg.sender),
-            "WBM: Method not allowed"
-        );
-        _;
+        return (_readHeader(_path).methods & methodBit != 0) || _isResourceAdmin(_path, msg.sender);
     }
 
-    function INFO(
-        string memory _path
+    function HEAD(
+        RequestLine memory requestLine
     )
         public
         view
-        pathExists(_path)
-        methodAllowed(_path, Method.INFO)
-        returns (InfoResponse memory infoResponse)
+        returns (HEADResponse memory head)
     {
-        infoResponse.headerInfo = _readHeader(_path);
-        infoResponse.metadata = _readMetadata(_path);
-        return infoResponse;
+        string memory _path = requestLine.path;
+        head.headerInfo = _readHeader(_path);
+        head.metadata = _readMetadata(_path);
+        bytes32[] memory _dataPoints = _readLocation(_path);
+        head.etag = keccak256(abi.encode(_dataPoints));
+
+        if (!compatibleWTTPVersion(requestLine.protocol)) {
+            head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 505
+            });
+        }
+        // 400 codes
+        else if (_dataPoints.length == 0) {
+            head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 404
+            });
+        } else if (!_methodAllowed(_path, Method.HEAD)) {
+            head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 405
+            });
+        } 
+        // 300 codes
+        else if (head.headerInfo.redirect.code != 0) {
+            head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: head.headerInfo.redirect.code
+            });
+        }
+        // 200 codes
+        else if (head.metadata.size == 0) {
+            head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 204
+            });
+        } else if (head.metadata.size > 0) {
+            head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 200
+            });
+        }
+        return head;
     }
 
     function LOCATE(
-        string memory _path
+        RequestLine memory requestLine
     )
         public
         view
-        pathExists(_path)
-        methodAllowed(_path, Method.LOCATE)
-        returns (bytes32[] memory)
+        returns (LOCATEResponse memory locateResponse)
     {
-        return _readLocation(_path);
+        string memory _path = requestLine.path;
+        locateResponse.head = HEAD(requestLine);
+        if (!_methodAllowed(_path, Method.LOCATE)) {
+            locateResponse.head.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 405
+            });
+        } else {
+            locateResponse.dataPoints = _readLocation(_path);
+        }
     }
 
     function DEFINE(
-        string memory _path,
-        HeaderInfo memory _header,
-        uint16 _redirect
-    ) public methodAllowed(_path, Method.DEFINE) {
-        _writeHeader(_path, _header, _redirect);
+        RequestLine memory _requestLine,
+        HeaderInfo memory _header
+    ) public returns (HEADResponse memory defineResponse) {
+        string memory _path = _requestLine.path;
+        if (_methodAllowed(_path, Method.DEFINE)) {
+            _writeHeader(_path, _header);
+            defineResponse = HEAD(_requestLine);
+        } else {
+            defineResponse.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 405
+            });
+        }
     }
 
     function DELETE(
-        string memory _path
-    ) public methodAllowed(_path, Method.DELETE) {
-        _deleteResource(_path);
+        RequestLine memory _requestLine
+    ) public returns (HEADResponse memory deleteResponse) {
+        string memory _path = _requestLine.path;
+        if (_methodAllowed(_path, Method.DELETE)) {
+            _deleteResource(_path);
+            deleteResponse = HEAD(_requestLine);
+        } else {
+            deleteResponse.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 405
+            });
+        }
     }
 
     function PUT(
-        string memory _path,
+        RequestLine memory _requestLine,
         bytes2 _mimeType,
         bytes2 _charset,
         bytes2 _location,
         address _publisher,
         bytes memory _data
-    ) public payable methodAllowed(_path, Method.PUT) returns (bytes32) {
-        return
-            _createResource(
+    ) public payable returns (PUTResponse memory putResponse) {
+        string memory _path = _requestLine.path;
+        if (_methodAllowed(_path, Method.PUT)) {
+            putResponse.dataPointAddress =
+                _createResource(
                 _path,
                 _mimeType,
                 _charset,
@@ -407,23 +511,31 @@ abstract contract WTTPBaseMethods is WTTPStorage {
                 _publisher,
                 _data
             );
+            putResponse.head = HEAD(_requestLine);
+        } else {
+            putResponse.head.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 405
+            });
+        }
+
     }
 
     function PATCH(
-        string memory _path,
+        RequestLine memory _requestLine,
         bytes memory _data,
         uint256 _chunk,
         address _publisher
-    ) public payable methodAllowed(_path, Method.PATCH) returns (bytes32) {
-        return _updateResource(_path, _data, _chunk, _publisher);
+    ) public payable returns (PUTResponse memory patchResponse) {
+        string memory _path = _requestLine.path;
+        if (_methodAllowed(_path, Method.PATCH)) {
+            patchResponse.dataPointAddress = _updateResource(_path, _data, _chunk, _publisher);
+            patchResponse.head = HEAD(_requestLine);
+        } else {
+            patchResponse.head.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 405
+            });
+        }
     }
-}
-
-// TW3 Implementation of WTTP
-abstract contract WebContract is WTTPBaseMethods {
-    // TW3 Public Data Point Registry
-    DataPointRegistry public immutable DPR = DataPointRegistry(0x0000000000000000000000000000000000000000);
-
-    constructor() WTTPBaseMethods(address(DPR), msg.sender) {}
-
 }
