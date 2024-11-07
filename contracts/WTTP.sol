@@ -50,10 +50,10 @@ contract WTTP {
             .DPS_();
         getResponse.head = _locateResponse.head;
 
-        // if (!_methodAllowed(getResponse.head.headerInfo.methods, Method.GET)) {
-        //     getResponse.responseLine = ResponseLine(_requestLine.protocol, 406);
-        //     return getResponse;
-        // } else
+        if (!_methodAllowed(getResponse.head.headerInfo.methods, Method.GET)) {
+            getResponse.head.responseLine = ResponseLine(_requestLine.protocol, 405);
+            return getResponse;
+        }
 
         if (
             (getResponse.head.etag != bytes32(0) &&

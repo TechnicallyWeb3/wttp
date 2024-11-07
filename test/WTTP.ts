@@ -360,4 +360,50 @@ describe("WTTP", function () {
             }
         });
     });
+
+    describe("GET Method - Error Handling", function () {
+        it("Should return 404 for non-existent resources", async function () {
+            const { wttpBaseMethods, wttp } = await loadFixture(deployFixture);
+
+            // Try to GET a non-existent resource
+            const getResponse = await wttp.GET(
+                { path: "/does-not-exist.html", protocol: "WTTP/2.0" },
+                {
+                    accept: [],
+                    acceptCharset: [],
+                    acceptLanguage: [],
+                    ifModifiedSince: 0,
+                    ifNoneMatch: ethers.ZeroHash
+                },
+                {
+                    host: wttpBaseMethods.target,
+                    rangeStart: 0,
+                    rangeEnd: 0
+                }
+            );
+
+            expect(getResponse.head.responseLine.code).to.equal(404);
+            expect(getResponse.body).to.equal("0x");
+
+            // Try with a different non-existent path
+            const getResponse2 = await wttp.GET(
+                { path: "/missing/nested/file.txt", protocol: "WTTP/2.0" },
+                {
+                    accept: [],
+                    acceptCharset: [],
+                    acceptLanguage: [],
+                    ifModifiedSince: 0,
+                    ifNoneMatch: ethers.ZeroHash
+                },
+                {
+                    host: wttpBaseMethods.target,
+                    rangeStart: 0,
+                    rangeEnd: 0
+                }
+            );
+
+            expect(getResponse2.head.responseLine.code).to.equal(404);
+            expect(getResponse2.body).to.equal("0x");
+        });
+    });
 });
