@@ -67,7 +67,7 @@ npm test
 - 404: Not Found
 - 405: Method Not Allowed
 - 416: Range Not Satisfiable
-- 505: HTTP Version Not Supported
+- 505: WTTP Version Not Supported
 
 ### Data Structures
 - DataPoints: Atomic storage units
