@@ -356,6 +356,7 @@ struct HEADResponse {
     ResponseLine responseLine;
     HeaderInfo headerInfo;
     ResourceMetadata metadata;
+    DataPointInfo dataStructure;
     bytes32 etag;
 }
 
@@ -400,6 +401,7 @@ abstract contract WTTPBaseMethods is WTTPStorage {
         head.headerInfo = _readHeader(_path);
         head.metadata = _readMetadata(_path);
         bytes32[] memory _dataPoints = _readLocation(_path);
+        head.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
         head.etag = keccak256(abi.encode(_dataPoints));
 
         if (!compatibleWTTPVersion(requestLine.protocol)) {
