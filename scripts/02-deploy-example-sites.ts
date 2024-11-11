@@ -1,5 +1,7 @@
 import { ethers } from "hardhat";
-import { MIME_TYPES, CHARSET_TYPES, LOCATION_TYPES, WTTP_CONTRACT, DATAPOINT_REGISTRY, DEFAULT_HEADER } from "../types/constants";
+import { MIME_TYPES, CHARSET_TYPES, LOCATION_TYPES, WTTP_CONTRACT_ADDRESS, DATAPOINT_REGISTRY_ADDRESS, DEFAULT_HEADER } from "../types/constants";
+import { WTTPHandler } from "../handlers/typescript/WTTPHandler";
+import { WTTP } from "../typechain-types";
 
 async function main() {
     // Get multiple signers, skip the first one (deployer)
@@ -12,36 +14,42 @@ async function main() {
     
     // Get WTTPBaseMethods contract
     const WTTPBaseMethods = await ethers.getContractFactory("Dev_WTTPBaseMethods");
-    const site1 = await WTTPBaseMethods.deploy(
-        DATAPOINT_REGISTRY,  // Use the saved registry address
+    const site1 = await WTTPBaseMethods.connect(creator1).deploy(
+        DATAPOINT_REGISTRY_ADDRESS,
         creator1.address,
         DEFAULT_HEADER
     );
-    const site2 = await WTTPBaseMethods.deploy(
-        DATAPOINT_REGISTRY,  // Use the saved registry address
+    const site2 = await WTTPBaseMethods.connect(creator2).deploy(
+        DATAPOINT_REGISTRY_ADDRESS,
         creator2.address,
         DEFAULT_HEADER
     );
-    const site3 = await WTTPBaseMethods.deploy(
-        DATAPOINT_REGISTRY,  // Use the saved registry address
+    const site3 = await WTTPBaseMethods.connect(creator3).deploy(
+        DATAPOINT_REGISTRY_ADDRESS,
         creator3.address,
         DEFAULT_HEADER
     );
-    await site1.waitForDeployment(); // Wait for deployment to complete
-    await site2.waitForDeployment(); // Wait for deployment to complete
-    await site3.waitForDeployment(); // Wait for deployment to complete
+    await site1.waitForDeployment();
+    await site2.waitForDeployment();
+    await site3.waitForDeployment();
 
     // Get DPR and DPS addresses from WTTPBaseMethods
-    const dataPointRegistry = await ethers.getContractAt("DataPointRegistry", DATAPOINT_REGISTRY);
+    const dataPointRegistry = await ethers.getContractAt("DataPointRegistry", DATAPOINT_REGISTRY_ADDRESS);
     const dpsAddress = await dataPointRegistry.DPS_();
+    const wttp = await ethers.getContractAt("WTTP", WTTP_CONTRACT_ADDRESS) as WTTP;
 
     console.log("Contract Addresses:");
-    console.log("- DataPointRegistry:", DATAPOINT_REGISTRY);
+    console.log("- DataPointRegistry:", DATAPOINT_REGISTRY_ADDRESS);
     console.log("- DataPointStorage:", dpsAddress);
-    console.log("- WTTP:", WTTP_CONTRACT);
+    console.log("- WTTP:", WTTP_CONTRACT_ADDRESS);
     console.log("- Site 1:", site1.target);
     console.log("- Site 2:", site2.target);
     console.log("- Site 3:", site3.target);
+
+    // Create handlers for each site
+    const handler1 = new WTTPHandler(wttp, site1.target, WTTPBaseMethods.interface, creator1);
+    const handler2 = new WTTPHandler(wttp, site2.target, WTTPBaseMethods.interface, creator2);
+    const handler3 = new WTTPHandler(wttp, site3.target, WTTPBaseMethods.interface, creator3);
 
     // Shared JavaScript file content
     const sharedScript = `
@@ -55,7 +63,6 @@ setInterval(updateTime, 1000);`;
 
     // Deploy Site 1 with creator1
     console.log("\nDeploying Site 1 with:", creator1.address);
-    const wttpBaseMethods1 = site1.connect(creator1);
     const site1Html = `
 <!DOCTYPE html>
 <html>
@@ -69,27 +76,22 @@ setInterval(updateTime, 1000);`;
 </body>
 </html>`;
 
-    await wttpBaseMethods1.PUT(
-        { path: "/site1/index.html", protocol: "WTTP/2.0" },
-        ethers.hexlify(MIME_TYPES.TEXT_HTML),
-        ethers.hexlify(CHARSET_TYPES.UTF_8),
-        ethers.hexlify(LOCATION_TYPES.DATAPOINT_CHUNK),
-        creator1.address,
-        ethers.toUtf8Bytes(site1Html)
+    await handler1.put(
+        "/site1/index.html",
+        site1Html,
+        'TEXT_HTML',
+        'UTF_8'
     );
 
-    await wttpBaseMethods1.PUT(
-        { path: "/site1/script.js", protocol: "WTTP/2.0" },
-        ethers.hexlify(MIME_TYPES.TEXT_JAVASCRIPT),
-        ethers.hexlify(CHARSET_TYPES.UTF_8),
-        ethers.hexlify(LOCATION_TYPES.DATAPOINT_CHUNK),
-        creator1.address,
-        ethers.toUtf8Bytes(sharedScript)
+    await handler1.put(
+        "/site1/script.js",
+        sharedScript,
+        'TEXT_JAVASCRIPT',
+        'UTF_8'
     );
 
     // Deploy Site 2 with creator2
     console.log("\nDeploying Site 2 with:", creator2.address);
-    const wttpBaseMethods2 = site2.connect(creator2);
     const site2Html = `
 <!DOCTYPE html>
 <html>
@@ -107,27 +109,22 @@ setInterval(updateTime, 1000);`;
 </body>
 </html>`;
 
-    await wttpBaseMethods2.PUT(
-        { path: "/site2/index.html", protocol: "WTTP/2.0" },
-        ethers.hexlify(MIME_TYPES.TEXT_HTML),
-        ethers.hexlify(CHARSET_TYPES.UTF_8),
-        ethers.hexlify(LOCATION_TYPES.DATAPOINT_CHUNK),
-        creator2.address,
-        ethers.toUtf8Bytes(site2Html)
+    await handler2.put(
+        "/site2/index.html",
+        site2Html,
+        'TEXT_HTML',
+        'UTF_8'
     );
 
-    await wttpBaseMethods2.PUT(
-        { path: "/site2/script.js", protocol: "WTTP/2.0" },
-        ethers.hexlify(MIME_TYPES.TEXT_JAVASCRIPT),
-        ethers.hexlify(CHARSET_TYPES.UTF_8),
-        ethers.hexlify(LOCATION_TYPES.DATAPOINT_CHUNK),
-        creator2.address,
-        ethers.toUtf8Bytes(sharedScript)
+    await handler2.put(
+        "/site2/script.js",
+        sharedScript,
+        'TEXT_JAVASCRIPT',
+        'UTF_8'
     );
 
     // Deploy Site 3 with creator3
     console.log("\nDeploying Site 3 with:", creator3.address);
-    const wttpBaseMethods3 = site3.connect(creator3);
     const site3Html = `
 <!DOCTYPE html>
 <html>
@@ -166,22 +163,18 @@ document.addEventListener('DOMContentLoaded', function() {
     toc.appendChild(tocList);
 });`;
 
-    await wttpBaseMethods3.PUT(
-        { path: "/site3/index.html", protocol: "WTTP/2.0" },
-        ethers.hexlify(MIME_TYPES.TEXT_HTML),
-        ethers.hexlify(CHARSET_TYPES.UTF_8),
-        ethers.hexlify(LOCATION_TYPES.DATAPOINT_CHUNK),
-        creator3.address,
-        ethers.toUtf8Bytes(site3Html)
+    await handler3.put(
+        "/site3/index.html",
+        site3Html,
+        'TEXT_HTML',
+        'UTF_8'
     );
 
-    await wttpBaseMethods3.PUT(
-        { path: "/site3/script.js", protocol: "WTTP/2.0" },
-        ethers.hexlify(MIME_TYPES.TEXT_JAVASCRIPT),
-        ethers.hexlify(CHARSET_TYPES.UTF_8),
-        ethers.hexlify(LOCATION_TYPES.DATAPOINT_CHUNK),
-        creator3.address,
-        ethers.toUtf8Bytes(site3Script)
+    await handler3.put(
+        "/site3/script.js",
+        site3Script,
+        'TEXT_JAVASCRIPT',
+        'UTF_8'
     );
 
     console.log("Deployed 3 example sites!");

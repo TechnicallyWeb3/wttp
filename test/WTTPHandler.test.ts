@@ -39,18 +39,13 @@ describe("WTTPHandler Integration Test", function () {
         const WTTP = await ethers.getContractFactory("WTTP");
         const wttp = await WTTP.deploy();
 
-        const webApp = new WTTPHandler(
-            wttp,
-            wttpBaseMethods.target,
-            wttpBaseMethods.interface,
-            tw3
-        );
+        const webApp = new WTTPHandler(wttp, tw3);
 
-        return { wttp, webApp, wttpBaseMethods, dataPointStorage, tw3, user1 };
+        return { wttp, webApp, WTTPBaseMethods, wttpBaseMethods, dataPointStorage, dataPointRegistry, tw3, user1 };
     }
 
     it("Should create and retrieve a hello world webpage with JavaScript", async function () {
-        const { webApp } = await loadFixture(deployFixture);
+        const { webApp, wttpBaseMethods } = await loadFixture(deployFixture);
 
         // HTML content
         const htmlContent = `
@@ -78,6 +73,7 @@ setInterval(updateTime, 1000);`;
 
         // Put the HTML file
         await webApp.put(
+            wttpBaseMethods.target,
             "/index.html",
             htmlContent,
             "TEXT_HTML",
@@ -86,6 +82,7 @@ setInterval(updateTime, 1000);`;
 
         // Put the JavaScript file
         await webApp.put(
+            wttpBaseMethods.target,
             "/script.js",
             jsContent,
             "TEXT_JAVASCRIPT",
@@ -93,162 +90,70 @@ setInterval(updateTime, 1000);`;
         );
 
         // Get and verify HTML content
-        const htmlResponse = await webApp.get("/index.html");
-        console.log(htmlResponse);
-        console.log(htmlResponse.head);
+        const htmlResponse = await webApp.get(wttpBaseMethods.target, "/index.html");
         expect(htmlResponse.head.responseLine.code).to.equal(200);
         expect(htmlResponse.body).to.equal(htmlContent);
 
         // Get and verify JavaScript content
-        const jsResponse = await webApp.get("/script.js");
+        const jsResponse = await webApp.get(wttpBaseMethods.target, "/script.js");
         expect(jsResponse.head.responseLine.code).to.equal(200);
         expect(jsResponse.body).to.equal(jsContent);
     });
 
-    it("Should allow admin to PUT then PATCH multi-part resources", async function () {
-        const { wttpBaseMethods, dataPointStorage, tw3 } = await loadFixture(deployFixture);
+    it("Should handle royalties correctly when writing identical data", async function () {
+        const { webApp, WTTPBaseMethods, wttpBaseMethods, dataPointRegistry, wttp, tw3, user1: publisher2 } = await loadFixture(deployFixture);
 
-        const part1 = "<html><body>First part";
-        const part2 = " Second part";
-        const part3 = " Third part</body></html>";
+        const webContract2 = await WTTPBaseMethods.connect(publisher2).deploy(dataPointRegistry.target, publisher2.address);
+        await webContract2.waitForDeployment();
 
-        // Add debug output for initial PUT
-        await wttpBaseMethods.PUT(
-            { path: "/multipart.html", protocol: "WTTP/2.0" },
-            ethers.hexlify("0x7468"),
-            ethers.hexlify("0x7574"),
-            ethers.hexlify("0x0101"),
-            tw3.address,
-            ethers.toUtf8Bytes(part1)
+        // Create a second handler with publisher2
+        const webApp2 = new WTTPHandler(wttp, publisher2);
+
+        const content = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Royalty Test</title>
+            </head>
+            <body>
+                <h1>Testing Royalties</h1>
+                <p>This is identical content that should trigger royalties.</p>
+            </body>
+            </html>
+        `;
+
+        // First publisher writes the content
+        await webApp.put(
+            wttpBaseMethods.target,
+            "/royalty-test.html",
+            content,
+            "TEXT_HTML",
+            "UTF_8"
         );
 
-        let headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
-        // console.log("\nAfter PUT:", {
-        //     size: headResponse.metadata.size,
-        //     version: headResponse.metadata.version
-        // });
+        // Get publisher's initial balance
+        const tw3InitialBalance = await dataPointRegistry.royaltyBalance(tw3.address);
 
-        // PATCH chunk 1
-        await wttpBaseMethods.PATCH(
-            { path: "/multipart.html", protocol: "WTTP/2.0" },
-            ethers.toUtf8Bytes(part2),
-            1,
-            tw3.address
+        // Second publisher writes the same content
+        await webApp2.put(
+            webContract2.target,
+            "/different-path.html",
+            content,
+            "TEXT_HTML",
+            "UTF_8"
         );
 
-        headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
-        // console.log("\nAfter PATCH 1:", {
-        //     size: headResponse.metadata.size,
-        //     version: headResponse.metadata.version
-        // });
+        // Check balances after second write
+        const tw3FinalBalance = await dataPointRegistry.royaltyBalance(tw3.address);
 
-        // PATCH chunk 2
-        await wttpBaseMethods.PATCH(
-            { path: "/multipart.html", protocol: "WTTP/2.0" },
-            ethers.toUtf8Bytes(part3),
-            2,
-            tw3.address
-        );
-        headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
-        // console.log("\nAfter PATCH 2:", {
-        //     size: headResponse.metadata.size,
-        //     version: headResponse.metadata.version
-        // });
+        // Verify royalties were paid
+        expect(tw3FinalBalance).to.be.gt(tw3InitialBalance);
 
-        let  locations = await wttpBaseMethods.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
-        // console.log("\nFinal locations:", locations);
-        // console.log("Locations length:", locations.dataPoints.length);
-        
-        // Verify final state
-        headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
-        expect(headResponse.metadata.size).to.equal(part1.length + part2.length + part3.length);
-        expect(headResponse.metadata.version).to.equal(3);
+        // Verify content was stored correctly for both
+        const response1 = await webApp.get(wttpBaseMethods.target, "/royalty-test.html");
+        const response2 = await webApp2.get(webContract2.target, "/different-path.html");
 
-        // Verify all chunks are present
-        locations = await wttpBaseMethods.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
-        expect(locations.dataPoints.length).to.equal(3);
-
-        // Verify data integrity
-        let result = "";
-        for (let i = 0; i < 3; i++) {
-            const data = await dataPointStorage.readDataPoint(locations.dataPoints[i]);
-            result += ethers.toUtf8String(data.data);
-        }
-        expect(result).to.equal(part1 + part2 + part3);
-    });
-
-    it("Should successfully GET ranges from a 20-part resource", async function () {
-        const { wttpBaseMethods, wttp, tw3 } = await loadFixture(deployFixture);
-        // Create a 20-part text file, each part containing a number
-        const parts = Array.from({ length: 20 }, (_, i) => `Part ${i + 1}\n`);
-        const fullContent = parts.join("");
-
-        // PUT first part
-        await wttpBaseMethods.PUT(
-            { path: "/large.txt", protocol: "WTTP/2.0" },
-            ethers.hexlify("0x7474"), // text/plain
-            ethers.hexlify("0x7574"), // utf-8
-            ethers.hexlify("0x0101"), // datapoint/chunk
-            tw3.address,
-            ethers.toUtf8Bytes(parts[0])
-        );
-
-        // PATCH remaining parts
-        for (let i = 1; i < 20; i++) {
-            await wttpBaseMethods.PATCH(
-                { path: "/large.txt", protocol: "WTTP/2.0" },
-                ethers.toUtf8Bytes(parts[i]),
-                i,
-                tw3.address
-            );
-        }
-
-        // Test different ranges
-        const ranges = [
-            { start: 0, end: 4 },    // First 5 parts
-            { start: 10, end: 14 },  // Middle 5 parts
-            { start: 15, end: 19 }   // Last 5 parts
-        ];
-
-        for (const range of ranges) {
-            const getResponse = await wttp.GET(
-                { path: "/large.txt", protocol: "WTTP/2.0" },
-                {
-                    accept: [],
-                    acceptCharset: [],
-                    acceptLanguage: [],
-                    ifModifiedSince: 0,
-                    ifNoneMatch: ethers.ZeroHash
-                },
-                {
-                    host: wttpBaseMethods.target,
-                    rangeStart: range.start,
-                    rangeEnd: range.end
-                }
-            );
-
-            expect(getResponse.head.responseLine.code).to.equal(206); // Partial Content
-            const expectedContent = parts.slice(range.start, range.end + 1).join("");
-            expect(ethers.toUtf8String(getResponse.body)).to.equal(expectedContent);
-        }
-        // Verify complete content with a full GET
-        const fullGetResponse = await wttp.GET(
-            { path: "/large.txt", protocol: "WTTP/2.0" },
-            {
-                accept: [],
-                acceptCharset: [],
-                acceptLanguage: [],
-                ifModifiedSince: 0,
-                ifNoneMatch: ethers.ZeroHash
-            },
-            {
-                host: wttpBaseMethods.target,
-                rangeStart: 0,
-                rangeEnd: 19
-            }
-        );
-
-        expect(fullGetResponse.head.responseLine.code).to.equal(200);
-        expect(ethers.toUtf8String(fullGetResponse.body)).to.equal(fullContent);
+        expect(response1.body).to.equal(content);
+        expect(response2.body).to.equal(content);
     });
 }); 

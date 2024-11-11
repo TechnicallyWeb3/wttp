@@ -10,21 +10,21 @@ describe("WebStorage", function () {
     async function deployWebStorageFixture() {
         const [tw3, publisher, dev] = await hre.ethers.getSigners();
 
-        console.log(`Deploying StatusMap...`);
+        // console.log(`Deploying StatusMap...`);
         const StatusMap = await hre.ethers.getContractFactory("StatusMap");
         const statusMap = await StatusMap.deploy();
 
-        console.log(`Deploying TypeMap...`);
+        // console.log(`Deploying TypeMap...`);
         const TypeMap = await hre.ethers.getContractFactory("TypeMap");
         const typeMap = await TypeMap.deploy();
 
-        console.log(`Deploying DataPointStorage...`);
-        const DataPointStorage = await hre.ethers.getContractFactory("DataPointStorage");
-        const dataPointStorage = await DataPointStorage.deploy();
+        // console.log(`Deploying DataPointStorage...`);
+        const DataPointStorage: DataPointStorage__factory = await hre.ethers.getContractFactory("DataPointStorage");
+        const dataPointStorage: DataPointStorage = await DataPointStorage.deploy();
 
-        console.log(`Deploying DataPointRegistry...`);
+        // console.log(`Deploying DataPointRegistry...`);
         const DataPointRegistry = await hre.ethers.getContractFactory("Dev_DataPointRegistry");
-        const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
+        const dataPointRegistry: Dev_DataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
 
         return { statusMap, typeMap, dataPointStorage, dataPointRegistry, tw3, publisher, dev };
     }

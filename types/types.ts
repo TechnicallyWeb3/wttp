@@ -1,4 +1,5 @@
 import { BytesLike } from "ethers";
+import { LOCATEResponseStructOutput } from "../typechain-types/contracts/WebContract.sol/WTTPBaseMethods";
 
 export interface RequestLine {
     protocol: string;
@@ -74,6 +75,4 @@ export interface GETResponse {
     body: string | BytesLike;
 }
 
-export interface LOCATEResponse {
-    dataPoints: string[];
-} 
+export type LOCATEResponse = LOCATEResponseStructOutput;

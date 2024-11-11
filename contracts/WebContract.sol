@@ -401,7 +401,6 @@ abstract contract WTTPBaseMethods is WTTPStorage {
         head.headerInfo = _readHeader(_path);
         head.metadata = _readMetadata(_path);
         bytes32[] memory _dataPoints = _readLocation(_path);
-        head.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
         head.etag = keccak256(abi.encode(_dataPoints));
 
         if (!compatibleWTTPVersion(requestLine.protocol)) {
@@ -431,11 +430,13 @@ abstract contract WTTPBaseMethods is WTTPStorage {
         }
         // 200 codes
         else if (head.metadata.size == 0) {
+            head.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
             head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
                 code: 204
             });
         } else if (head.metadata.size > 0) {
+            head.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
             head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
                 code: 200
