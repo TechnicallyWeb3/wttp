@@ -128,7 +128,8 @@ setInterval(updateTime, 1000);`;
             "/royalty-test.html",
             content,
             "TEXT_HTML",
-            "UTF_8"
+            "UTF_8",
+            tw3
         );
 
         // Get publisher's initial balance
@@ -140,7 +141,8 @@ setInterval(updateTime, 1000);`;
             "/different-path.html",
             content,
             "TEXT_HTML",
-            "UTF_8"
+            "UTF_8", 
+            publisher2
         );
 
         // Check balances after second write

@@ -7,8 +7,9 @@ import {
     HEADResponse,
     LOCATEResponse
 } from '../../types/types';
-import { WTTP, WTTPBaseMethods } from '../../typechain-types';
+import { WTTP } from '../../typechain-types';
 import { MIME_TYPES, CHARSET_TYPES, LOCATION_TYPES } from '../../types/constants';
+import { GETResponseStructOutput, HEADResponseStructOutput } from '../../typechain-types/contracts/WTTP';
 
 export class WTTPHandler {
     private wttpContract: WTTP;
@@ -22,31 +23,11 @@ export class WTTPHandler {
         this.signer = signer;
     }
 
-    private async getWebHost(host: ethers.Addressable): Promise<WTTPBaseMethods> {
-        
-        // Create a new contract instance for the WTTPBaseMethods at the given address
-        const webHost = new ethers.Contract(
-            host,
-            [
-                // Core methods needed for WTTP functionality
-                "function HEAD(tuple(string protocol, string path)) view returns (tuple(tuple(string protocol, uint16 code), tuple(tuple(uint256 maxAge, uint256 sMaxage, bool noStore, bool noCache, bool immutableFlag, bool mustRevalidate, bool proxyRevalidate, uint256 staleWhileRevalidate, uint256 staleIfError, bool publicFlag, bool privateFlag) cache, uint16 methods, tuple(uint16 code, string location) redirect, bytes32 resourceAdmin) headerInfo, tuple(uint256 size, uint256 version, uint256 modifiedDate) metadata, tuple(uint256 size, bytes2 mimeType, bytes2 charset, bytes2 location) dataStructure, bytes32 etag))",
-                "function LOCATE(tuple(string protocol, string path)) view returns (tuple(tuple(tuple(string protocol, uint16 code), tuple(tuple(uint256 maxAge, uint256 sMaxage, bool noStore, bool noCache, bool immutableFlag, bool mustRevalidate, bool proxyRevalidate, uint256 staleWhileRevalidate, uint256 staleIfError, bool publicFlag, bool privateFlag) cache, uint16 methods, tuple(uint16 code, string location) redirect, bytes32 resourceAdmin) headerInfo, tuple(uint256 size, uint256 version, uint256 modifiedDate) metadata, tuple(uint256 size, bytes2 mimeType, bytes2 charset, bytes2 location) dataStructure, bytes32 etag) head, bytes32[] dataPoints))",
-                "function DPR_() view returns (address)",
-                "function PUT(tuple(string protocol, string path), bytes2 mimeType, bytes2 charset, bytes2 location, address publisher, bytes data) payable returns (tuple(tuple(tuple(string protocol, uint16 code), tuple(tuple(uint256 maxAge, uint256 sMaxage, bool noStore, bool noCache, bool immutableFlag, bool mustRevalidate, bool proxyRevalidate, uint256 staleWhileRevalidate, uint256 staleIfError, bool publicFlag, bool privateFlag) cache, uint16 methods, tuple(uint16 code, string location) redirect, bytes32 resourceAdmin) headerInfo, tuple(uint256 size, uint256 version, uint256 modifiedDate) metadata, tuple(uint256 size, bytes2 mimeType, bytes2 charset, bytes2 location) dataStructure, bytes32 etag) head, bytes32 dataPointAddress))",
-                "function PATCH(tuple(string protocol, string path), bytes data, uint256 chunk, address publisher) payable returns (tuple(tuple(tuple(string protocol, uint16 code), tuple(tuple(uint256 maxAge, uint256 sMaxage, bool noStore, bool noCache, bool immutableFlag, bool mustRevalidate, bool proxyRevalidate, uint256 staleWhileRevalidate, uint256 staleIfError, bool publicFlag, bool privateFlag) cache, uint16 methods, tuple(uint16 code, string location) redirect, bytes32 resourceAdmin) headerInfo, tuple(uint256 size, uint256 version, uint256 modifiedDate) metadata, tuple(uint256 size, bytes2 mimeType, bytes2 charset, bytes2 location) dataStructure, bytes32 etag) head, bytes32 dataPointAddress))"
-            ],
-            this.signer
-        ) as unknown as WTTPBaseMethods;
-
-        return webHost;
-    }
-
-    async get(host: ethers.Addressable, path: string, options: {
+    async get(host: string | ethers.Addressable, path: string, options: {
         range?: { start: number; end: number };
         ifNoneMatch?: string;
         ifModifiedSince?: number;
-    } = {}): Promise<GETResponse> {
-        const webHost = await this.getWebHost(host);
+    } = {}): Promise<GETResponseStructOutput> {
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",
             path
@@ -61,7 +42,7 @@ export class WTTPHandler {
         };
 
         const getRequest: GETRequest = {
-            host: host,
+            host: host as string,
             rangeStart: options.range?.start || 0,
             rangeEnd: options.range?.end || 0
         };
@@ -76,14 +57,13 @@ export class WTTPHandler {
     }
 
     async put(
-        host: ethers.Addressable,
+        host: string | ethers.Addressable,
         path: string, 
         content: string | Uint8Array,
         mimeType: keyof typeof MIME_TYPES = 'TEXT_PLAIN',
         charset: keyof typeof CHARSET_TYPES = 'UTF_8',
         signer: ethers.Signer = this.signer
     ): Promise<void> {
-        const webHost = await this.getWebHost(host);
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",
             path
@@ -93,55 +73,24 @@ export class WTTPHandler {
             ? ethers.toUtf8Bytes(content)
             : content;
 
-        // Calculate royalties upfront
-        const dprAddress = await webHost.DPR_();
-        const dpr = new ethers.Contract(
-            dprAddress,
-            [
-                "function DPS_() view returns (address)",
-                "function getRoyalty(bytes32) view returns (uint256)"
-            ],
-            signer
-        );
-
-        const dpsAddress = await dpr.DPS_();
-        const dps = new ethers.Contract(
-            dpsAddress,
-            ["function calculateAddress(tuple(tuple(bytes2 mimeType, bytes2 charset, bytes2 location) structure, bytes data)) view returns (bytes32)"],
-            signer
-        );
-
-        const dataPoint = {
-            structure: {
-                mimeType: MIME_TYPES[mimeType],
-                charset: CHARSET_TYPES[charset],
-                location: LOCATION_TYPES.DATAPOINT_CHUNK
-            },
-            data: contentBytes
-        };
-        
-        const dataPointAddress = await dps.calculateAddress(dataPoint);
-        const royaltyAmount = await dpr.getRoyalty(dataPointAddress);
-
-        // Always include royalty amount (will be 0 if no royalty required)
-        await webHost.PUT(
+        await this.wttpContract.PUT(
+            host,
             requestLine,
             MIME_TYPES[mimeType],
             CHARSET_TYPES[charset],
             LOCATION_TYPES.DATAPOINT_CHUNK,
-            await this.signer.getAddress(),
-            contentBytes,
-            { value: royaltyAmount }
+            signer,
+            contentBytes
         );
     }
 
     async patch(
-        host: ethers.Addressable,
+        host: string | ethers.Addressable,
         path: string,
         content: string | Uint8Array,
-        chunkIndex: number
+        chunkIndex: number,
+        signer: ethers.Signer = this.signer
     ): Promise<void> {
-        const webHost = await this.getWebHost(host);
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",
             path
@@ -151,60 +100,31 @@ export class WTTPHandler {
             ? ethers.toUtf8Bytes(content)
             : content;
 
-        // Get existing datapoint structure
-        const locateResponse = await this.locate(path);
-        
-        // Calculate royalties upfront
-        const dprAddress = await webHost.DPR_();
-        const dpr = new ethers.Contract(
-            dprAddress,
-            ['function calculateAddress(tuple(tuple(bytes2 mimeType, bytes2 charset, bytes2 location) structure, bytes data) memory _dataPoint) public view returns (bytes32)', 'function getRoyalty(bytes32) public view returns (uint256)'],
-            this.signer
-        );
-        
-        const dataPoint = {
-            structure: {
-                mimeType: locateResponse.head.dataStructure.mimeType,
-                charset: locateResponse.head.dataStructure.charset,
-                location: locateResponse.head.dataStructure.location
-            },
-            data: contentBytes
-        };
-        
-        const dataPointAddress = await dpr.calculateAddress(dataPoint);
-        const royaltyAmount = await dpr.getRoyalty(dataPointAddress);
-
-        // Always include royalty amount
-        await webHost.PATCH(
+        await this.wttpContract.PATCH(
+            host,
             requestLine,
             contentBytes,
             chunkIndex,
-            await this.signer.getAddress(),
-            { value: royaltyAmount }
+            signer
         );
     }
 
-    
-    async head(host: ethers.Addressable, path: string): Promise<HEADResponse> {
-        const webHost = await this.getWebHost(host);
+    async head(host: string | ethers.Addressable, path: string): Promise<HEADResponseS> {
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",
             path
         };
         
-        const response = await webHost.HEAD(requestLine);
-        return this.processHeadResponse(response);
+        return await this.wttpContract.HEAD(host, requestLine);
     }
 
-    
     async locate(host: ethers.Addressable, path: string): Promise<LOCATEResponse> {
-        const webHost = await this.getWebHost(host);
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",
             path
         };
         
-        return await webHost.LOCATE(requestLine);
+        return await this.wttpContract.LOCATE(host, requestLine);
     }
 
     private decodeContent(content: string | BytesLike | Uint8Array | Buffer, charset: string): string {
@@ -242,7 +162,7 @@ export class WTTPHandler {
     private processResponse(response: any): GETResponse {
         const [headArray, bodyHex] = [response['0'], response['1']];
         
-        const head: HEADResponse = {
+        const head: HEADResponseStructOutput = {
             responseLine: {
                 protocol: headArray[0][0],
                 code: Number(headArray[0][1])
@@ -270,7 +190,7 @@ export class WTTPHandler {
         // console.log('Response Code:', head.responseLine.code);
         // console.log('DataStructure:', head.dataStructure);
 
-        if (head.responseLine.code === 200 || head.responseLine.code === 206) {
+        if (Number(head.responseLine.code) === 200 || Number(head.responseLine.code) === 206) {
             const { mimeType, charset } = head.dataStructure;
 
             // console.log('Charset:', charset);
@@ -293,18 +213,18 @@ export class WTTPHandler {
                 const decodedBody = this.decodeContent(bodyHex, charset);
                 // console.log('Decoded Body:', decodedBody);
                 return {
-                    head,
+                    head: head,
                     body: decodedBody
                 };
             }
         }
         return {
-            head,
+            head: head,
             body: bodyHex
         };
     }
 
-    private processHeadResponse(response: any): HEADResponse {
+    private processHeadResponse(response: any): HEADResponseStructOutput {
         // Similar structure to processResponse but only returns the head portion
         const headArray = response;
         return {
@@ -344,13 +264,4 @@ export class WTTPHandler {
         }
     }
 
-    async getRange(
-        path: string, 
-        start: number, 
-        end: number
-    ): Promise<GETResponse> {
-        return this.get(path, {
-            range: { start, end }
-        });
-    }
 } 

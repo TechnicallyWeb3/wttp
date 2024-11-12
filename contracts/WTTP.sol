@@ -100,4 +100,67 @@ contract WTTP {
             }
         }
     }
+
+    function HEAD(
+        address _host,
+        RequestLine memory _requestLine
+    ) public view returns (HEADResponse memory headResponse) {
+        return WTTPBaseMethods(_host).HEAD(_requestLine);
+    }
+
+    function LOCATE(
+        address _host,
+        RequestLine memory _requestLine
+    ) public view returns (LOCATEResponse memory locateResponse) {
+        return WTTPBaseMethods(_host).LOCATE(_requestLine);
+    }
+
+    function DEFINE(
+        address _host,
+        RequestLine memory _requestLine,
+        HeaderInfo memory _header
+    ) public returns (HEADResponse memory defineResponse) {
+        return WTTPBaseMethods(_host).DEFINE(_requestLine, _header);
+    }
+
+    function DELETE(
+        address _host,
+        RequestLine memory _requestLine
+    ) public returns (HEADResponse memory deleteResponse) {
+        return WTTPBaseMethods(_host).DELETE(_requestLine);
+    }
+
+    function PUT(
+        address _host,
+        RequestLine memory _requestLine,
+        bytes2 _mimeType,
+        bytes2 _charset,
+        bytes2 _location,
+        address _publisher,
+        bytes memory _data
+    ) public payable returns (PUTResponse memory putResponse) {
+        return WTTPBaseMethods(_host).PUT{value: msg.value}(
+            _requestLine,
+            _mimeType,
+            _charset,
+            _location,
+            _publisher,
+            _data
+        );
+    }
+
+    function PATCH(
+        address _host,
+        RequestLine memory _requestLine,
+        bytes memory _data,
+        uint256 _chunk,
+        address _publisher
+    ) public payable returns (PUTResponse memory patchResponse) {
+        return WTTPBaseMethods(_host).PATCH{value: msg.value}(
+            _requestLine,
+            _data,
+            _chunk,
+            _publisher
+        );
+    }
 }

@@ -1,6 +1,16 @@
 import { BytesLike } from "ethers";
 import { LOCATEResponseStructOutput } from "../typechain-types/contracts/WebContract.sol/WTTPBaseMethods";
 
+export enum Method {
+    GET = 'GET',
+    HEAD = 'HEAD',
+    PUT = 'PUT',
+    PATCH = 'PATCH',
+    DELETE = 'DELETE',
+    LOCATE = 'LOCATE',
+    DEFINE = 'DEFINE'
+}
+
 export interface RequestLine {
     protocol: string;
     path: string;
@@ -76,3 +86,24 @@ export interface GETResponse {
 }
 
 export type LOCATEResponse = LOCATEResponseStructOutput;
+
+export interface RequestOptions {
+    host: string;
+    path: string;
+    content?: string | Uint8Array;
+    ifNoneMatch?: string;
+    ifModifiedSince?: number;
+    range?: { 
+        start: number; 
+        end: number; 
+    };
+    mimeType?: string;
+    charset?: string;
+    location?: string;
+    publisher?: string;
+    accepts?: string[];
+    acceptsCharset?: string[];
+    acceptsLocation?: string[];
+    chunkIndex?: number;
+    header?: HeaderInfo;
+}
