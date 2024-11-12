@@ -47,9 +47,9 @@ async function main() {
     console.log("- Site 3:", site3.target);
 
     // Create handlers for each site
-    const handler1 = new WTTPHandler(wttp, site1.target, WTTPBaseMethods.interface, creator1);
-    const handler2 = new WTTPHandler(wttp, site2.target, WTTPBaseMethods.interface, creator2);
-    const handler3 = new WTTPHandler(wttp, site3.target, WTTPBaseMethods.interface, creator3);
+    const handler1 = new WTTPHandler(wttp, creator1);
+    const handler2 = new WTTPHandler(wttp, creator2);
+    const handler3 = new WTTPHandler(wttp, creator3);
 
     // Shared JavaScript file content
     const sharedScript = `
@@ -77,6 +77,7 @@ setInterval(updateTime, 1000);`;
 </html>`;
 
     await handler1.put(
+        site1.target,
         "/site1/index.html",
         site1Html,
         'TEXT_HTML',
@@ -84,6 +85,7 @@ setInterval(updateTime, 1000);`;
     );
 
     await handler1.put(
+        site1.target,
         "/site1/script.js",
         sharedScript,
         'TEXT_JAVASCRIPT',
@@ -110,6 +112,7 @@ setInterval(updateTime, 1000);`;
 </html>`;
 
     await handler2.put(
+        site2.target,
         "/site2/index.html",
         site2Html,
         'TEXT_HTML',
@@ -117,6 +120,7 @@ setInterval(updateTime, 1000);`;
     );
 
     await handler2.put(
+        site2.target,
         "/site2/script.js",
         sharedScript,
         'TEXT_JAVASCRIPT',
@@ -164,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });`;
 
     await handler3.put(
+        site3.target,
         "/site3/index.html",
         site3Html,
         'TEXT_HTML',
@@ -171,6 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
     );
 
     await handler3.put(
+        site3.target,
         "/site3/script.js",
         site3Script,
         'TEXT_JAVASCRIPT',
