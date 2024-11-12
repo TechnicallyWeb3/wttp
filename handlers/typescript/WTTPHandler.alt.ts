@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { WTTP } from '../../typechain-types';
-import { URLParser, RequestBuilder, ENSResolver, ResponseBuilder } from '../../utils';
-import { RequestLine, RequestHeader, GETRequest, HEADResponse, GETResponse, LOCATEResponse, Method } from '../../types/types';
+import { URLParser, RequestBuilder, ENSResolver, ResponseBuilder } from '../../utils/WTTPUtils';
+import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
 import { HEADResponseStructOutput } from '../../typechain-types/contracts/WTTP';
 
@@ -300,8 +300,8 @@ export class WTTPHandler {
         return this.buildResponse(request.method, rawResponse);
     }
 
-    private buildRequest(request: any) {
-        return this.requestBuilder.build(request.method, request);
+    private buildRequest(method: Method, request: RequestOptions) {
+        return this.requestBuilder.build(method, request);
     }
 
     private buildResponse(method: Method, rawResponse: any) {

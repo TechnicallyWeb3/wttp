@@ -457,3 +457,7 @@ export const DEFAULT_HEADER = {
     },
     resourceAdmin: "0x0000000000000000000000000000000000000000000000000000000000000000"
 } as const;
+
+// Supported protocols
+export const SUPPORTED_PROTOCOLS = ['wttp://', 'http://', 'https://'];
+
