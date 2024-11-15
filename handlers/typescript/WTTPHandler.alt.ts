@@ -267,46 +267,63 @@ export class WTTPHandler {
                 );
                 break;
 
-            case Method.PUT:
-                rawResponse = await this.loadSite(request.host).then((site) => site.PUT(
+            case Method.PUT: {
+                const site = await this.loadSite(request.host);
+                const tx = await site.PUT(
                     request.requestLine,
                     request.mimeType,
                     request.charset,
                     request.location,
                     request.publisher,
                     request.data,
-                    { value: 0 } // Add payment options if needed
-                ));
+                    { value: 0 }
+                );
+                const receipt = await tx.wait();
+                const event = tx.events?.find((e: any) => e.event === 'PUTSuccess');
+                rawResponse = event?.args?.putResponse;
+                console.log(event);
                 break;
+            }
 
-            case Method.PATCH:
-                // const site = await this.loadSite(request.host);
-                rawResponse = await this.loadSite(request.host).then((site) => site.PATCH(
-                    request.host,
+            case Method.PATCH: {
+                const site = await this.loadSite(request.host);
+                const tx = await site.PATCH(
                     request.requestLine,
                     request.data,
                     request.chunk,
                     request.publisher,
-                    { value: 0 } // Add payment options if needed
-                ));
+                    { value: 0 }
+                );
+                const receipt = await tx.wait();
+                const event = receipt.events?.find((e: any) => e.event === 'PATCHSuccess');
+                rawResponse = event?.args?.patchResponse;
                 break;
+            }
 
-            case Method.DEFINE:
-                await this.loadSite(request.host).then((site) => site.DEFINE(
+            case Method.DEFINE: {
+                const site = await this.loadSite(request.host);
+                const tx = await site.DEFINE(
                     request.host,
                     request.requestLine,
                     request.header
-                )).then((response) => {
-                    rawResponse = response;
-                });
+                );
+                const receipt = await tx.wait();
+                const event = receipt.events?.find((e: any) => e.event === 'DEFINESuccess');
+                rawResponse = event?.args?.defineResponse;
                 break;
+            }
 
-            case Method.DELETE:
-                rawResponse = await this.loadSite(request.host).then((site) => site.DELETE(
+            case Method.DELETE: {
+                const site = await this.loadSite(request.host);
+                const tx = await site.DELETE(
                     request.host,
                     request.requestLine
-                ));
+                );
+                const receipt = await tx.wait();
+                const event = receipt.events?.find((e: any) => e.event === 'DELETESuccess');
+                rawResponse = event?.args?.deleteResponse;
                 break;
+            }
 
             default:
                 rawResponse = {
@@ -321,7 +338,8 @@ export class WTTPHandler {
                 };
         }
 
-        return rawResponse ? this.buildResponse(request.method, rawResponse) : new Response("Internal Server Error", { status: 500 });
+        return rawResponse ? this.buildResponse(request.method, rawResponse) : 
+               new Response("Internal Server Error", { status: 500 });
     }
 
     public buildRequest(method: Method, request: RequestOptions) {

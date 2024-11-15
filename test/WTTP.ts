@@ -559,7 +559,7 @@ describe("WTTP", function () {
 
     describe("PATCH Method", function () {
         it("Should emit PATCHSuccess event with correct parameters", async function () {
-            const { site, wttp, tw3 } = await loadFixture(deployFixture);
+            const { site, tw3 } = await loadFixture(deployFixture);
 
             const requestLine = { path: "/test.html", protocol: "WTTP/2.0" };
             
@@ -581,6 +581,8 @@ describe("WTTP", function () {
                 1,
                 tw3.address
             );
+
+            const requestLineArray = [requestLine.protocol, requestLine.path];
 
             await expect(tx)
                 .to.emit(site, "PATCHSuccess")
