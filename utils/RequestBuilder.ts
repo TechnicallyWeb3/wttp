@@ -8,6 +8,7 @@ import {
 } from '../types/types';
 
 export class RequestBuilder {
+
     build(method: Method, options: RequestOptions) {
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",

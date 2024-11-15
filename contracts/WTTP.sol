@@ -24,6 +24,8 @@ struct GETResponse {
 }
 
 contract WTTP {
+
+
     function _methodAllowed(
         uint16 _methods,
         Method _method
@@ -115,52 +117,37 @@ contract WTTP {
         return WTTPBaseMethods(_host).LOCATE(_requestLine);
     }
 
-    function DEFINE(
-        address _host,
-        RequestLine memory _requestLine,
-        HeaderInfo memory _header
-    ) public returns (HEADResponse memory defineResponse) {
-        return WTTPBaseMethods(_host).DEFINE(_requestLine, _header);
-    }
-
-    function DELETE(
+    function OPTIONS(
         address _host,
         RequestLine memory _requestLine
-    ) public returns (HEADResponse memory deleteResponse) {
-        return WTTPBaseMethods(_host).DELETE(_requestLine);
+    ) public view returns (HEADResponse memory optionsResponse) {
+        optionsResponse = WTTPBaseMethods(_host).HEAD(_requestLine);
+        
+        // If OPTIONS method isn't allowed, return 405
+        if (!_methodAllowed(optionsResponse.headerInfo.methods, Method.OPTIONS)) {
+            optionsResponse.responseLine = ResponseLine(_requestLine.protocol, 405);
+            return optionsResponse;
+        }
+        
+        // For successful OPTIONS request, return 204 with allowed methods in header
+        optionsResponse.responseLine = ResponseLine(_requestLine.protocol, 204);
+        return optionsResponse;
     }
 
-    function PUT(
+    function TRACE(
         address _host,
-        RequestLine memory _requestLine,
-        bytes2 _mimeType,
-        bytes2 _charset,
-        bytes2 _location,
-        address _publisher,
-        bytes memory _data
-    ) public payable returns (PUTResponse memory putResponse) {
-        return WTTPBaseMethods(_host).PUT{value: msg.value}(
-            _requestLine,
-            _mimeType,
-            _charset,
-            _location,
-            _publisher,
-            _data
-        );
-    }
-
-    function PATCH(
-        address _host,
-        RequestLine memory _requestLine,
-        bytes memory _data,
-        uint256 _chunk,
-        address _publisher
-    ) public payable returns (PUTResponse memory patchResponse) {
-        return WTTPBaseMethods(_host).PATCH{value: msg.value}(
-            _requestLine,
-            _data,
-            _chunk,
-            _publisher
-        );
+        RequestLine memory _requestLine
+    ) public view returns (HEADResponse memory traceResponse) {
+        traceResponse = WTTPBaseMethods(_host).HEAD(_requestLine);
+        
+        // If TRACE method isn't allowed, return 405
+        if (!_methodAllowed(traceResponse.headerInfo.methods, Method.TRACE)) {
+            traceResponse.responseLine = ResponseLine(_requestLine.protocol, 405);
+            return traceResponse;
+        }
+        
+        // For successful TRACE request, return 200 with request info
+        traceResponse.responseLine = ResponseLine(_requestLine.protocol, 200);
+        return traceResponse;
     }
 }

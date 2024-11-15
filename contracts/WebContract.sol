@@ -362,6 +362,7 @@ struct HEADResponse {
 
 struct LOCATEResponse {
     HEADResponse head;
+    address dpsAddress;
     bytes32[] dataPoints;
 }
 
@@ -454,6 +455,7 @@ abstract contract WTTPBaseMethods is WTTPStorage {
     {
         string memory _path = requestLine.path;
         locateResponse.head = HEAD(requestLine);
+        locateResponse.dpsAddress = address(DPS_);
         if (!_methodAllowed(_path, Method.LOCATE)) {
             locateResponse.head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
@@ -478,6 +480,8 @@ abstract contract WTTPBaseMethods is WTTPStorage {
                 code: 405
             });
         }
+
+        emit DEFINESuccess(msg.sender, _requestLine, defineResponse);
     }
 
     function DELETE(
@@ -493,6 +497,8 @@ abstract contract WTTPBaseMethods is WTTPStorage {
                 code: 405
             });
         }
+
+        emit DELETESuccess(msg.sender, _requestLine, deleteResponse);
     }
 
     function PUT(
@@ -515,6 +521,10 @@ abstract contract WTTPBaseMethods is WTTPStorage {
                 _data
             );
             putResponse.head = HEAD(_requestLine);
+            putResponse.head.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 201
+            });
         } else {
             putResponse.head.responseLine = ResponseLine({
                 protocol: _requestLine.protocol,
@@ -522,6 +532,7 @@ abstract contract WTTPBaseMethods is WTTPStorage {
             });
         }
 
+        emit PUTSuccess(msg.sender, _requestLine, putResponse);
     }
 
     function PATCH(
@@ -540,5 +551,13 @@ abstract contract WTTPBaseMethods is WTTPStorage {
                 code: 405
             });
         }
+
+        emit PATCHSuccess(msg.sender, _requestLine, patchResponse);
     }
+
+    // Define events
+    event PATCHSuccess(address indexed publisher, RequestLine requestLine, PUTResponse patchResponse);
+    event PUTSuccess(address indexed publisher, RequestLine requestLine, PUTResponse putResponse);
+    event DELETESuccess(address indexed publisher, RequestLine requestLine, HEADResponse deleteResponse);
+    event DEFINESuccess(address indexed publisher, RequestLine requestLine, HEADResponse defineResponse);
 }

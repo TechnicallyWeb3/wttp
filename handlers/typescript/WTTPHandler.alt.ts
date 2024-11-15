@@ -1,9 +1,9 @@
 import { ethers } from 'ethers';
-import { WTTP } from '../../typechain-types';
-import { URLParser, RequestBuilder, ENSResolver, ResponseBuilder } from '../../utils/WTTPUtils';
+import { WTTP } from '../../typechain-types';   
 import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
 import { HEADResponseStructOutput } from '../../typechain-types/contracts/WTTP';
+import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
 
 export class WTTPHandler {
     private wttp: WTTP;
@@ -21,6 +21,7 @@ export class WTTPHandler {
         this.defaultSigner = signer;
         this.urlParser = new URLParser();
         this.requestBuilder = new RequestBuilder();
+        this.responseBuilder = new ResponseBuilder();
         this.ensResolver = new ENSResolver();
     }
 
@@ -42,7 +43,7 @@ export class WTTPHandler {
     } = {}): Promise<Response> {
         const request = await this.prepareRequest(
             options.method || Method.GET,
-            await this.parseURL(url), // breaks the url into host and path
+            url,
             {
                 content: options.body,
                 ifNoneMatch: options.headers?.['If-None-Match'],
@@ -63,17 +64,17 @@ export class WTTPHandler {
     }
 
     // Helper methods for parsing headers
-    private parseRange(range?: string) {
-        if (!range) return undefined;
-        const match = range.match(/bytes=(\d+)-(\d+)?/);
-        if (!match) return undefined;
+    public parseRange(range?: string) {
+        if (!range) return { start: 0, end: 0 };
+        let match = range.match(/chunks=(\d+)-(\d+)?/);
+        if (!match) return { start: 0, end: 0 };
         return {
             start: parseInt(match[1]),
             end: match[2] ? parseInt(match[2]) : 0
         };
     }
 
-    private parseMimeType(contentType?: string) {
+    public parseMimeType(contentType?: string) {
         if (!contentType) return undefined;
         if (contentType.trim() in MIME_TYPE_STRINGS) {
             return MIME_TYPE_STRINGS[contentType.trim() as keyof typeof MIME_TYPE_STRINGS];
@@ -81,7 +82,7 @@ export class WTTPHandler {
         return undefined;
     }
 
-    private parseCharset(contentType?: string) {
+    public parseCharset(contentType?: string) {
         if (!contentType) return "0x0000";
         if (contentType.trim() in CHARSET_STRINGS) {
             return CHARSET_STRINGS[contentType.trim() as keyof typeof CHARSET_STRINGS];
@@ -89,7 +90,7 @@ export class WTTPHandler {
         return "0x0000";
     }
 
-    private parseLocation(contentLocation?: string) {
+    public parseLocation(contentLocation?: string) {
         if (!contentLocation) return undefined;
         if (contentLocation.trim() in LOCATION_STRINGS) {
             return LOCATION_STRINGS[contentLocation.trim() as keyof typeof LOCATION_STRINGS];
@@ -97,7 +98,7 @@ export class WTTPHandler {
         return undefined;
     }
 
-    private parseAccepts(accept?: string) {
+    public parseAccepts(accept?: string) {
         if (!accept) return [];
         return accept.split(',')
             .map(s => s.trim())
@@ -105,7 +106,7 @@ export class WTTPHandler {
             .filter((type): type is typeof MIME_TYPES[keyof typeof MIME_TYPES] => type !== undefined);
     }
 
-    private parseAcceptsCharset(acceptCharset?: string) {
+    public parseAcceptsCharset(acceptCharset?: string) {
         if (!acceptCharset) return [];
         return acceptCharset.split(',')
             .map(s => s.trim())
@@ -113,7 +114,7 @@ export class WTTPHandler {
             .filter((type): type is typeof CHARSET_STRINGS[keyof typeof CHARSET_STRINGS] => type !== undefined);
     }
 
-    private parseAcceptsLanguage(acceptLanguage?: string) {
+    public parseAcceptsLanguage(acceptLanguage?: string) {
         if (!acceptLanguage) return [];
         return acceptLanguage.split(',')
             .map(s => s.trim())
@@ -121,12 +122,14 @@ export class WTTPHandler {
             .filter((type): type is typeof LANGUAGE_STRINGS[keyof typeof LANGUAGE_STRINGS] => type !== undefined);
     }
 
-    private parseChunkIndex(range?: string) {
-        return range ? parseInt(range.split('-')[0]) : undefined;
+    public parseChunkIndex(range?: string) {
+        if (!range) return undefined;
+        const matches = range.match(/^chunks=(\d+)/);
+        return matches ? parseInt(matches[1]) : undefined;
     }
 
     // Private helper methods
-    private async prepareRequest(method: Method, url: string, options: any = {}) {
+    public async prepareRequest(method: Method, url: string, options: any = {}) {
         const { host, path } = await this.parseURL(url);
         const resolvedHost = await this.resolveHost(host);
 
@@ -171,7 +174,7 @@ export class WTTPHandler {
                     mimeType: ethers.hexlify(options.mimeType || "0x7468"), // default text/html
                     charset: ethers.hexlify(options.charset || "0x7574"),    // default utf-8
                     location: ethers.hexlify(options.location || "0x0101"), // default datapoint/chunk
-                    publisher: options.publisher || await this.defaultSigner.getAddress(),
+                    publisher: options.publisher || this.defaultSigner,
                     data: content
                 };
             }
@@ -214,7 +217,18 @@ export class WTTPHandler {
         }
     }
 
-    private async executeRequest(request: any) {
+    public async loadSite(host: string, signer: ethers.Signer = this.defaultSigner) {
+        // Load the WTTP Base Methods contract at the given address
+        const WTTPBaseMethods = require('../../artifacts/contracts/WebContract.sol/WTTPBaseMethods.json');
+        const contract = new ethers.Contract(
+            host,
+            WTTPBaseMethods.abi,
+            signer
+        );
+        return contract;
+    }
+
+    public async executeRequest(request: any) {
         let rawResponse;
         if (request.error) {
             rawResponse = {
@@ -227,6 +241,7 @@ export class WTTPHandler {
                 },
                 body: request.error.message
             };
+            return this.buildResponse(request.method, rawResponse);
         }
 
         switch (request.method) {
@@ -236,22 +251,24 @@ export class WTTPHandler {
                     request.requestHeader,
                     request.getRequest
                 );
+                break;
 
             case Method.HEAD:
                 rawResponse = await this.wttp.HEAD(
                     request.host,
                     request.requestLine
                 );
+                break;
 
             case Method.LOCATE:
                 rawResponse = await this.wttp.LOCATE(
                     request.host,
                     request.requestLine
                 );
+                break;
 
             case Method.PUT:
-                rawResponse = await this.wttp.PUT(
-                    request.host,
+                rawResponse = await this.loadSite(request.host).then((site) => site.PUT(
                     request.requestLine,
                     request.mimeType,
                     request.charset,
@@ -259,30 +276,37 @@ export class WTTPHandler {
                     request.publisher,
                     request.data,
                     { value: 0 } // Add payment options if needed
-                );
+                ));
+                break;
 
             case Method.PATCH:
-                rawResponse = await this.wttp.PATCH(
+                // const site = await this.loadSite(request.host);
+                rawResponse = await this.loadSite(request.host).then((site) => site.PATCH(
                     request.host,
                     request.requestLine,
                     request.data,
                     request.chunk,
                     request.publisher,
                     { value: 0 } // Add payment options if needed
-                );
+                ));
+                break;
 
             case Method.DEFINE:
-                rawResponse = await this.wttp.DEFINE(
+                await this.loadSite(request.host).then((site) => site.DEFINE(
                     request.host,
                     request.requestLine,
                     request.header
-                );
+                )).then((response) => {
+                    rawResponse = response;
+                });
+                break;
 
             case Method.DELETE:
-                rawResponse = await this.wttp.DELETE(
+                rawResponse = await this.loadSite(request.host).then((site) => site.DELETE(
                     request.host,
                     request.requestLine
-                );
+                ));
+                break;
 
             default:
                 rawResponse = {
@@ -297,22 +321,22 @@ export class WTTPHandler {
                 };
         }
 
-        return this.buildResponse(request.method, rawResponse);
+        return rawResponse ? this.buildResponse(request.method, rawResponse) : new Response("Internal Server Error", { status: 500 });
     }
 
-    private buildRequest(method: Method, request: RequestOptions) {
+    public buildRequest(method: Method, request: RequestOptions) {
         return this.requestBuilder.build(method, request);
     }
 
-    private buildResponse(method: Method, rawResponse: any) {
+    public buildResponse(method: Method, rawResponse: any) {
         return this.responseBuilder.build(method, rawResponse);
     }
 
-    private async parseURL(url: string) {
+    public parseURL(url: string) {
         return this.urlParser.parse(url);
     }
 
-    private async resolveHost(host: string) {
+    public async resolveHost(host: string) {
         return this.ensResolver.resolve(host);
     }
 }
