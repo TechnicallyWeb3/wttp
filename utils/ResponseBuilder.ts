@@ -6,7 +6,8 @@ export class ResponseBuilder {
     private buildHeaders(headResponse: HEADResponse): Headers {
         const headers = new Headers();
 
-        console.log(headResponse);
+        // console.log(headResponse);
+        
         // Content Type and Charset
         if (headResponse.dataStructure.mimeType && headResponse.dataStructure.charset) {
             headers.set('Content-Type', 
