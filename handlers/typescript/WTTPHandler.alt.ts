@@ -4,6 +4,7 @@ import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
 import { HEADResponseStructOutput } from '../../typechain-types/contracts/WTTP';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
+import { WTTPBaseMethods__factory } from '../../typechain-types';
 
 export class WTTPHandler {
     private wttp: WTTP;
@@ -218,14 +219,7 @@ export class WTTPHandler {
     }
 
     public async loadSite(host: string, signer: ethers.Signer = this.defaultSigner) {
-        // Load the WTTP Base Methods contract at the given address
-        const WTTPBaseMethods = require('../../artifacts/contracts/WebContract.sol/WTTPBaseMethods.json');
-        const contract = new ethers.Contract(
-            host,
-            WTTPBaseMethods.abi,
-            signer
-        );
-        return contract;
+        return WTTPBaseMethods__factory.connect(host, signer);
     }
 
     public async executeRequest(request: any) {
@@ -279,9 +273,9 @@ export class WTTPHandler {
                     { value: 0 }
                 );
                 const receipt = await tx.wait();
-                const event = tx.events?.find((e: any) => e.event === 'PUTSuccess');
+                const event = receipt.events?.find((e: any) => e.event === 'PUTSuccess');
                 rawResponse = event?.args?.putResponse;
-                console.log(event);
+                console.log(receipt.events);
                 break;
             }
 

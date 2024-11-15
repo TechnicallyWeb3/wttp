@@ -168,8 +168,7 @@ contract DataPointRegistry {
         } else {
             // the data point already exists, so we need to pay the publisher royalties
             if (
-                royalty.publisher != address(0) &&
-                royalty.publisher != msg.sender
+                royalty.publisher != address(0)
             ) {
                 uint256 gasCost = getRoyalty(dataPointAddress);
                 require(
