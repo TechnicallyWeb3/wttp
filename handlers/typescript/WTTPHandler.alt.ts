@@ -1,10 +1,8 @@
 import { ethers } from 'ethers';
-import { WTTP } from '../../typechain-types';   
+import { WTTP, WTTPBaseMethods__factory, DataPointRegistry__factory } from '../../typechain-types';   
 import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
-import { HEADResponseStructOutput } from '../../typechain-types/contracts/WTTP';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
-import { WTTPBaseMethods__factory } from '../../typechain-types';
 
 export class WTTPHandler {
     private wttp: WTTP;
@@ -41,6 +39,7 @@ export class WTTPHandler {
             [key: string]: any;
         };
         body?: string | Uint8Array;
+        signer?: ethers.Signer;
     } = {}): Promise<Response> {
         const request = await this.prepareRequest(
             options.method || Method.GET,
@@ -58,7 +57,8 @@ export class WTTPHandler {
                 acceptsCharset: this.parseAcceptsCharset(options.headers?.['Accept-Charset']),
                 acceptsLocation: this.parseAcceptsLanguage(options.headers?.['Accept-Language']),
                 chunkIndex: this.parseChunkIndex(options.headers?.['Range'])
-            }
+            }, 
+            options.signer || this.defaultSigner
         );
 
         return this.executeRequest(request);
@@ -222,6 +222,41 @@ export class WTTPHandler {
         return WTTPBaseMethods__factory.connect(host, signer);
     }
 
+    public calculateDataPointAddress(request: RequestOptions): string {
+        // Convert content to bytes if it's a string
+        const content = request.content instanceof Uint8Array
+            ? request.content
+            : ethers.toUtf8Bytes(request.content || '');
+    
+        // Get the hex values for mime type, charset, and location
+        const mimeType = ethers.hexlify(request.mimeType || "0x7468"); // default text/html
+        const charset = ethers.hexlify(request.charset || "0x7574");   // default utf-8
+        const location = ethers.hexlify(request.location || "0x0101"); // default datapoint/chunk
+    
+        // Pack and hash the values in the same order as the smart contract
+        const packed = ethers.concat([
+            ethers.toBeArray(mimeType).slice(-2),  // bytes2
+            ethers.toBeArray(charset).slice(-2),   // bytes2
+            ethers.toBeArray(location).slice(-2),  // bytes2
+            content
+        ]);
+    
+        return ethers.keccak256(packed);
+    }
+
+    public async loadRoyalty(request: RequestOptions) {
+        const site = await this.loadSite(request.host);
+        const dprAddress = await site.DPR_();
+        
+        // Connect to DPR using the factory
+        const dpr = DataPointRegistry__factory.connect(dprAddress, this.defaultSigner);
+        
+        const dataPointAddress = this.calculateDataPointAddress(request);
+        const royalty = await dpr.getRoyalty(dataPointAddress);
+        console.log(`Royalty: ${royalty}`);
+        return royalty;
+    }
+
     public async executeRequest(request: any) {
         let rawResponse;
         if (request.error) {
@@ -263,6 +298,7 @@ export class WTTPHandler {
 
             case Method.PUT: {
                 const site = await this.loadSite(request.host);
+                const royalty = await this.loadRoyalty(request);
                 const tx = await site.PUT(
                     request.requestLine,
                     request.mimeType,
@@ -270,26 +306,27 @@ export class WTTPHandler {
                     request.location,
                     request.publisher,
                     request.data,
-                    { value: 0 }
+                    { value: royalty }
                 );
                 const receipt = await tx.wait();
-                const event = receipt.events?.find((e: any) => e.event === 'PUTSuccess');
+                const event = receipt.logs?.find((e: any) => e.fragment.name === 'PUTSuccess');
                 rawResponse = event?.args?.putResponse;
-                console.log(receipt.events);
+                // console.log(rawResponse);
                 break;
             }
 
             case Method.PATCH: {
                 const site = await this.loadSite(request.host);
+                const royalty = await this.loadRoyalty(request);
                 const tx = await site.PATCH(
                     request.requestLine,
                     request.data,
                     request.chunk,
                     request.publisher,
-                    { value: 0 }
+                    { value: royalty }
                 );
                 const receipt = await tx.wait();
-                const event = receipt.events?.find((e: any) => e.event === 'PATCHSuccess');
+                const event = receipt.logs?.find((e: any) => e.fragment.name === 'PATCHSuccess');
                 rawResponse = event?.args?.patchResponse;
                 break;
             }
@@ -302,7 +339,7 @@ export class WTTPHandler {
                     request.header
                 );
                 const receipt = await tx.wait();
-                const event = receipt.events?.find((e: any) => e.event === 'DEFINESuccess');
+                const event = receipt.logs?.find((e: any) => e.fragment.name === 'DEFINESuccess');
                 rawResponse = event?.args?.defineResponse;
                 break;
             }
@@ -314,7 +351,7 @@ export class WTTPHandler {
                     request.requestLine
                 );
                 const receipt = await tx.wait();
-                const event = receipt.events?.find((e: any) => e.event === 'DELETESuccess');
+                const event = receipt.logs?.find((e: any) => e.fragment.name === 'DELETESuccess');
                 rawResponse = event?.args?.deleteResponse;
                 break;
             }

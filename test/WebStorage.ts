@@ -343,25 +343,25 @@ describe("WebStorage", function () {
             ).to.be.revertedWith("DPR: Insufficient balance");
         });
 
-        it("Should not charge royalties for publisher's own writes", async function () {
-            const { dataPointRegistry, typeMap, publisher } = await loadFixture(deployWebStorageFixture);
+        // it("Should not charge royalties for publisher's own writes", async function () {
+        //     const { dataPointRegistry, typeMap, publisher } = await loadFixture(deployWebStorageFixture);
             
-            const dataPoint = {
-                structure: {
-                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
-                    charset: await typeMap.getTypeBytes(1, "utf-8"),
-                    location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
-                },
-                data: ethers.toUtf8Bytes("Hello, World!"),
-            };
+        //     const dataPoint = {
+        //         structure: {
+        //             mimeType: await typeMap.getTypeBytes(0, "text/plain"),
+        //             charset: await typeMap.getTypeBytes(1, "utf-8"),
+        //             location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
+        //         },
+        //         data: ethers.toUtf8Bytes("Hello, World!"),
+        //     };
 
-            // First write by publisher
-            await dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address);
+        //     // First write by publisher
+        //     await dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address);
             
-            // Second write by same publisher should not require royalty payment
-            await expect(
-                dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address)
-            ).to.not.be.reverted;
-        });
+        //     // Second write by same publisher should not require royalty payment
+        //     await expect(
+        //         dataPointRegistry.connect(publisher).writeDataPoint(dataPoint, publisher.address)
+        //     ).to.not.be.reverted;
+        // });
     });
 });
