@@ -56,9 +56,9 @@ export class WTTPHandler {
                 accepts: this.parseAccepts(options.headers?.['Accept']),
                 acceptsCharset: this.parseAcceptsCharset(options.headers?.['Accept-Charset']),
                 acceptsLocation: this.parseAcceptsLanguage(options.headers?.['Accept-Language']),
-                chunkIndex: this.parseChunkIndex(options.headers?.['Range'])
-            }, 
-            options.signer || this.defaultSigner
+                chunkIndex: this.parseChunkIndex(options.headers?.['Range']),
+                signer: options.signer || this.defaultSigner
+            }
         );
 
         return this.executeRequest(request);
@@ -246,14 +246,14 @@ export class WTTPHandler {
 
     public async loadRoyalty(request: RequestOptions) {
         const site = await this.loadSite(request.host);
-        const dprAddress = await site.DPR_();
+        const dprAddress = await site.getDPR();
         
         // Connect to DPR using the factory
         const dpr = DataPointRegistry__factory.connect(dprAddress, this.defaultSigner);
         
         const dataPointAddress = this.calculateDataPointAddress(request);
         const royalty = await dpr.getRoyalty(dataPointAddress);
-        console.log(`Royalty: ${royalty}`);
+        // console.log(`Royalty: ${royalty}`);
         return royalty;
     }
 

@@ -6,6 +6,7 @@ import { Method } from '../types/types';
 import { MIME_TYPE_STRINGS, CHARSET_STRINGS, LANGUAGE_STRINGS, LOCATION_STRINGS } from '../types/constants';
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 import hre from 'hardhat';
+import { WTTPBaseMethods } from '../typechain-types';
 
 describe('WTTPHandler', () => {
     let handler: WTTPHandler;
@@ -202,7 +203,7 @@ describe('WTTPHandler', () => {
 
         await firstPut.wait();
 
-        return { dataPointStorage, dataPointRegistry, site, wttp, tw3, user1, user2 };
+        return { dataPointStorage, dataPointRegistry, WTTPBaseMethods, site, wttp, tw3, user1, user2 };
     }
 
     describe('fetch', () => {
@@ -281,6 +282,242 @@ describe('WTTPHandler', () => {
             } catch (error) {
                 expect(error).to.be.instanceOf(Error);
             }
+        });
+    });
+
+    describe('multipart operations', () => {
+        let handler: WTTPHandler;
+
+        beforeEach(async () => {
+            const { wttp, tw3 } = await loadFixture(deployFixture);
+            handler = new WTTPHandler(wttp, tw3);
+        });
+
+        it('should create a multipart file using PUT and PATCH', async () => {
+            const { site } = await loadFixture(deployFixture);
+            
+            // Initial content with PUT
+            const part1 = '<html><head><title>Multipart Test</title></head>';
+            const response1 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: part1
+            });
+            expect(response1.status).to.equal(201);
+
+            // Add second part with PATCH
+            const part2 = '<body><h1>Part 2 Content</h1>';
+            const response2 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                method: Method.PATCH,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Range': 'chunks=1'
+                },
+                body: part2
+            });
+            expect(response2.status).to.equal(200);
+
+            // Add third part with PATCH
+            const part3 = '</body></html>';
+            const response3 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                method: Method.PATCH,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Range': 'chunks=2'
+                },
+                body: part3
+            });
+            expect(response3.status).to.equal(200);
+
+            // Verify complete content
+            const getResponse = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                headers: {
+                    'Range': 'chunks=0-2'
+                }
+            });
+            
+            expect(getResponse.status).to.equal(200);
+            expect(await getResponse.text()).to.equal(part1 + part2 + part3);
+        });
+
+        // it('should handle invalid PATCH requests', async () => {
+        //     const { site } = await loadFixture(deployFixture);
+            
+        //     // Try to PATCH non-existent file
+        //     const response = await handler.fetch(`wttp://${site.target}/nonexistent.html`, {
+        //         method: Method.PATCH,
+        //         headers: {
+        //             'Content-Type': 'text/html',
+        //             'Content-Location': 'datapoint/chunk',
+        //             'Range': 'chunks=0'
+        //         },
+        //         body: 'Some content'
+        //     });
+            
+        // });
+    });
+
+    describe('royalty handling', () => {
+        let handler: WTTPHandler;
+        let site1: WTTPBaseMethods;
+        let site2: WTTPBaseMethods;
+
+        beforeEach(async () => {
+            const { wttp, WTTPBaseMethods, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
+            handler = new WTTPHandler(wttp, user1);
+
+            const defaultHeader = {
+                cache: {
+                    maxAge: 0,
+                    sMaxage: 0,
+                    noStore: false,
+                    noCache: false,
+                    immutableFlag: false,
+                    mustRevalidate: false,
+                    proxyRevalidate: false,
+                    staleWhileRevalidate: 0,
+                    staleIfError: 0,
+                    publicFlag: false,
+                    privateFlag: false
+                },
+                methods: 2913, // Default methods
+                redirect: {
+                    code: 0,
+                    location: ""
+                },
+                resourceAdmin: hre.ethers.ZeroHash
+            };
+            site1 = await WTTPBaseMethods.connect(user1).deploy(dataPointRegistry.target, user1.address, defaultHeader);
+
+            site2 = await WTTPBaseMethods.connect(user2).deploy(dataPointRegistry.target, user2.address, defaultHeader);
+
+            await site1.waitForDeployment();
+            await site2.waitForDeployment();
+        });
+
+        it('should handle royalties when multiple users write the same chunk', async () => {
+            const { dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
+
+            // Initial content with first user
+            const content = '<html><body>Test Content</body></html>';
+            
+            // Get initial balances
+            const user1InitialBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2InitialBalance = await dataPointRegistry.royaltyBalance(user2.address);
+            
+            // First user writes content
+            const response1 = await handler.fetch(`wttp://${site1.target}/royalty-test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: content,
+                signer: user1
+            });
+            expect(response1.status).to.equal(201);
+
+            // Second user writes the same content to a different path
+            const response2 = await handler.fetch(`wttp://${site2.target}/royalty-test2.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: content,
+                signer: user2
+            });
+            expect(response2.status).to.equal(201);
+
+            // Get final balances
+            const user1FinalBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2FinalBalance = await dataPointRegistry.royaltyBalance(user2.address);
+
+            // First user should receive royalty for the reused chunk
+            expect(user1FinalBalance).to.be.gt(user1InitialBalance, "First user should receive royalty");
+            expect(user2FinalBalance).to.equal(user2InitialBalance, "Second user should not receive royalty for reused chunk");
+
+            // Verify both paths return the same content
+            const getResponse1 = await handler.fetch(`wttp://${site1.target}/royalty-test.html`);
+            const getResponse2 = await handler.fetch(`wttp://${site1.target}/royalty-test2.html`);
+            
+            expect(await getResponse1.text()).to.equal(content);
+            expect(await getResponse2.text()).to.equal(content);
+        });
+
+        it('should handle royalties for multipart content', async () => {
+            const { WTTPBaseMethods, site, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
+            
+            const part1 = '<html><head><title>Royalty Test</title></head>';
+            const part2 = '<body><h1>Test Content</h1></body></html>';
+
+            // Get initial balances
+            const user1InitialBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2InitialBalance = await dataPointRegistry.royaltyBalance(user2.address);
+
+            // First user creates multipart file
+            await handler.fetch(`wttp://${site.target}/multipart1.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: part1,
+                signer: user1
+            });
+
+            await handler.fetch(`wttp://${site.target}/multipart1.html`, {
+                method: Method.PATCH,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Range': 'chunks=1'
+                },
+                body: part2,
+                signer: user1
+            });
+
+            // Second user creates file with same content
+            await handler.fetch(`wttp://${site.target}/multipart2.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: part1,
+                signer: user2
+            });
+
+            await handler.fetch(`wttp://${site.target}/multipart2.html`, {
+                method: Method.PATCH,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Range': 'chunks=1'
+                },
+                body: part2,
+                signer: user2
+            });
+
+            // Get final balances
+            const user1FinalBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2FinalBalance = await dataPointRegistry.royaltyBalance(user2.address);
+
+            // First user should receive royalties for both reused chunks
+            expect(user1FinalBalance).to.be.gt(user1InitialBalance, "First user should receive royalties");
+            expect(user2FinalBalance).to.equal(user2InitialBalance, "Second user should not receive royalties for reused chunks");
+
+            // Verify content
+            const getResponse1 = await handler.fetch(`wttp://${site.target}/multipart1.html`);
+            const getResponse2 = await handler.fetch(`wttp://${site.target}/multipart2.html`);
+            
+            expect(await getResponse1.text()).to.equal(part1 + part2);
+            expect(await getResponse2.text()).to.equal(part1 + part2);
         });
     });
 });

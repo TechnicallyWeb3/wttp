@@ -14,7 +14,7 @@ export class URLParser {
             : url;
         
         // Add logging to debug the value
-        console.log('cleanUrl:', cleanUrl, typeof cleanUrl);
+        // console.log('cleanUrl:', cleanUrl, typeof cleanUrl);
         
         // Ensure we have a string and split into host and path
         if (typeof cleanUrl !== 'string') {

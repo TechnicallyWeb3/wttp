@@ -99,6 +99,14 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
     DataPointRegistry public DPR_;
     DataPointStorage internal DPS_;
 
+    function getDPS() public view returns (address) {
+        return address(DPS_);
+    }
+
+    function getDPR() public view returns (address) {
+        return address(DPR_);
+    }
+
     constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPPermissions(_owner) {
         DPR_ = DataPointRegistry(_dpr);
         DPS_ = DPR_.DPS_();
