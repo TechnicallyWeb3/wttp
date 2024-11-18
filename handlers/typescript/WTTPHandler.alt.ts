@@ -246,7 +246,7 @@ export class WTTPHandler {
 
     public async loadRoyalty(request: RequestOptions) {
         const site = await this.loadSite(request.host);
-        const dprAddress = await site.getDPR();
+        const dprAddress = await site?.getDPR?.();
         
         // Connect to DPR using the factory
         const dpr = DataPointRegistry__factory.connect(dprAddress, this.defaultSigner);
