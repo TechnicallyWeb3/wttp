@@ -1,5 +1,5 @@
-import { ethers } from 'ethers';
-import { WTTP, WTTPBaseMethods__factory, DataPointRegistry__factory } from '../../typechain-types';   
+import { ethers } from 'hardhat';
+import { WTTP, WTTPBaseMethods__factory, DataPointRegistry__factory } from '../../typechain-types';
 import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
@@ -41,10 +41,12 @@ export class WTTPHandler {
         body?: string | Uint8Array;
         signer?: ethers.Signer;
     } = {}): Promise<Response> {
-        const request = await this.prepareRequest(
-            options.method || Method.GET,
-            url,
+        const { host, path } = this.parseURL(url);
+        const request = this.buildRequest(
             {
+                method: options.method || Method.GET,
+                host: host,
+                path: path,
                 content: options.body,
                 ifNoneMatch: options.headers?.['If-None-Match'],
                 ifModifiedSince: options.headers?.['If-Modified-Since'],
@@ -52,7 +54,7 @@ export class WTTPHandler {
                 mimeType: this.parseMimeType(options.headers?.['Content-Type']),
                 charset: this.parseCharset(options.headers?.['Content-Type']),
                 location: this.parseLocation(options.headers?.['Content-Location']),
-                publisher: options.headers?.['Publisher'],
+                publisher: options.headers?.['Publisher'] || this.defaultSigner.address,
                 accepts: this.parseAccepts(options.headers?.['Accept']),
                 acceptsCharset: this.parseAcceptsCharset(options.headers?.['Accept-Charset']),
                 acceptsLocation: this.parseAcceptsLanguage(options.headers?.['Accept-Language']),
@@ -61,7 +63,9 @@ export class WTTPHandler {
             }
         );
 
-        return this.executeRequest(request);
+        // console.log(request);
+
+        return this.executeRequest(await request);
     }
 
     // Helper methods for parsing headers
@@ -77,16 +81,19 @@ export class WTTPHandler {
 
     public parseMimeType(contentType?: string) {
         if (!contentType) return undefined;
-        if (contentType.trim() in MIME_TYPE_STRINGS) {
-            return MIME_TYPE_STRINGS[contentType.trim() as keyof typeof MIME_TYPE_STRINGS];
+        contentType = contentType.includes(';') ? contentType.split(';')[0] : contentType.trim();
+        if (contentType in MIME_TYPE_STRINGS) {
+            return MIME_TYPE_STRINGS[contentType as keyof typeof MIME_TYPE_STRINGS];
         }
         return undefined;
     }
 
     public parseCharset(contentType?: string) {
         if (!contentType) return "0x0000";
-        if (contentType.trim() in CHARSET_STRINGS) {
-            return CHARSET_STRINGS[contentType.trim() as keyof typeof CHARSET_STRINGS];
+        contentType = contentType.includes(';') ? contentType.split(';')[1].trim() : contentType.trim();
+        contentType = contentType.includes('charset') ? contentType.split('=')[1].trim() : contentType;
+        if (contentType in CHARSET_STRINGS) {
+            return CHARSET_STRINGS[contentType as keyof typeof CHARSET_STRINGS];
         }
         return "0x0000";
     }
@@ -129,135 +136,154 @@ export class WTTPHandler {
         return matches ? parseInt(matches[1]) : undefined;
     }
 
-    // Private helper methods
-    public async prepareRequest(method: Method, url: string, options: any = {}) {
-        const { host, path } = await this.parseURL(url);
-        const resolvedHost = await this.resolveHost(host);
-
-        const requestLine: RequestLine = {
-            protocol: "WTTP/2.0",
-            path
-        };
-
-        switch (method) {
-            case Method.GET: {
-                const requestHeader: RequestHeader = {
-                    accept: options.accepts,
-                    acceptCharset: options.acceptsCharset,
-                    acceptLanguage: options.acceptsLocation,
-                    ifModifiedSince: options.ifModifiedSince || 0,
-                    ifNoneMatch: options.ifNoneMatch || ethers.ZeroHash
-                };
-
-                const getRequest: GETRequest = {
-                    host: resolvedHost,
-                    rangeStart: options.range?.start || 0,
-                    rangeEnd: options.range?.end || 0
-                };
-
-                return { method, requestLine, requestHeader, getRequest };
-            }
-
-            case Method.HEAD:
-            case Method.LOCATE:
-            case Method.DELETE:
-                return { method, host: resolvedHost, requestLine };
-
-            case Method.PUT: {
-                const content = options.content instanceof Uint8Array
-                    ? options.content
-                    : ethers.toUtf8Bytes(options.content);
-
-                return {
-                    method,
-                    host: resolvedHost,
-                    requestLine,
-                    mimeType: ethers.hexlify(options.mimeType || "0x7468"), // default text/html
-                    charset: ethers.hexlify(options.charset || "0x7574"),    // default utf-8
-                    location: ethers.hexlify(options.location || "0x0101"), // default datapoint/chunk
-                    publisher: options.publisher || this.defaultSigner,
-                    data: content
-                };
-            }
-
-            case Method.PATCH: {
-                const content = options.content instanceof Uint8Array
-                    ? options.content
-                    : ethers.toUtf8Bytes(options.content);
-
-                return {
-                    method,
-                    host: resolvedHost,
-                    requestLine,
-                    data: content,
-                    chunk: options.chunkIndex,
-                    publisher: options.publisher || await this.defaultSigner.getAddress()
-                };
-            }
-
-            case Method.DEFINE: {
-                return {
-                    method,
-                    host: resolvedHost,
-                    requestLine,
-                    header: options.header
-                };
-            }
-
-            default: {
-                return {
-                    method,
-                    host: resolvedHost,
-                    requestLine,
-                    error: {
-                        code: 501,
-                        message: `Client Error: Unsupported method: ${method}`
-                    }
-                };
-            }
-        }
+    public parseContent(request: any) {
+        return request.data instanceof Uint8Array ? ethers.toUtf8String(request.data) : request.data;
     }
+
+    // // Private helper methods
+    // public async prepareRequest(method: Method, url: string, options: any = {}) {
+    //     const { host, path } = this.parseURL(url);
+    //     const resolvedHost = await this.resolveHost(host);
+
+    //     const requestLine: RequestLine = {
+    //         protocol: "WTTP/2.0",
+    //         path
+    //     };
+
+    //     switch (method) {
+    //         case Method.GET: {
+    //             const requestHeader: RequestHeader = {
+    //                 accept: options.accepts,
+    //                 acceptCharset: options.acceptsCharset,
+    //                 acceptLanguage: options.acceptsLocation,
+    //                 ifModifiedSince: options.ifModifiedSince || 0,
+    //                 ifNoneMatch: options.ifNoneMatch || ethers.ZeroHash
+    //             };
+
+    //             const getRequest: GETRequest = {
+    //                 host: resolvedHost,
+    //                 rangeStart: options.range?.start || 0,
+    //                 rangeEnd: options.range?.end || 0
+    //             };
+
+    //             return { method, requestLine, requestHeader, getRequest, signer: options.signer || this.defaultSigner };
+    //         }
+
+    //         case Method.HEAD:
+    //         case Method.LOCATE:
+    //         case Method.DELETE:
+    //             return { method, host: resolvedHost, requestLine, signer: options.signer || this.defaultSigner };
+
+    //         case Method.PUT: {
+    //             const content = options.content instanceof Uint8Array
+    //                 ? options.content
+    //                 : ethers.toUtf8Bytes(options.content);
+
+    //             return {
+    //                 method,
+    //                 host: resolvedHost,
+    //                 requestLine,
+    //                 mimeType: ethers.hexlify(options.mimeType || "0x7468"), // default text/html
+    //                 charset: ethers.hexlify(options.charset || "0x7574"),    // default utf-8
+    //                 location: ethers.hexlify(options.location || "0x0101"), // default datapoint/chunk
+    //                 publisher: options.publisher || this.defaultSigner,
+    //                 data: content,
+    //                 signer: options.signer || this.defaultSigner
+    //             };
+    //         }
+
+    //         case Method.PATCH: {
+    //             const content = options.content instanceof Uint8Array
+    //                 ? options.content
+    //                 : ethers.toUtf8Bytes(options.content);
+
+    //             return {
+    //                 method,
+    //                 host: resolvedHost,
+    //                 requestLine,
+    //                 data: content,
+    //                 chunk: options.chunkIndex,
+    //                 publisher: options.publisher || this.defaultSigner,
+    //                 signer: options.signer || this.defaultSigner
+    //             };
+    //         }
+
+    //         case Method.DEFINE: {
+    //             return {
+    //                 method,
+    //                 host: resolvedHost,
+    //                 requestLine,
+    //                 header: options.header,
+    //                 signer: options.signer || this.defaultSigner
+    //             };
+    //         }
+
+    //         default: {
+    //             return {
+    //                 method,
+    //                 host: resolvedHost,
+    //                 requestLine,
+    //                 error: {
+    //                     code: 501,
+    //                     message: `Client Error: Unsupported method: ${method}`
+    //                 },
+    //                 signer: options.signer || this.defaultSigner
+    //             };
+    //         }
+    //     }
+    // }
 
     public async loadSite(host: string, signer: ethers.Signer = this.defaultSigner) {
         return WTTPBaseMethods__factory.connect(host, signer);
     }
 
-    public calculateDataPointAddress(request: RequestOptions): string {
-        // Convert content to bytes if it's a string
-        const content = request.content instanceof Uint8Array
-            ? request.content
-            : ethers.toUtf8Bytes(request.content || '');
-    
-        // Get the hex values for mime type, charset, and location
-        const mimeType = ethers.hexlify(request.mimeType || "0x7468"); // default text/html
-        const charset = ethers.hexlify(request.charset || "0x7574");   // default utf-8
-        const location = ethers.hexlify(request.location || "0x0101"); // default datapoint/chunk
-    
-        // Pack and hash the values in the same order as the smart contract
+    public calculateDataPointAddress(request: any): string {
+        const data = request.data instanceof Uint8Array
+            ? request.data
+            : ethers.toUtf8Bytes(request.data);
+
+        const mimeType = request.mimeType;
+        const charset = request.charset || "0x0000";
+        const location = request.location;
+
         const packed = ethers.concat([
-            ethers.toBeArray(mimeType).slice(-2),  // bytes2
-            ethers.toBeArray(charset).slice(-2),   // bytes2
-            ethers.toBeArray(location).slice(-2),  // bytes2
-            content
+            ethers.getBytes(mimeType),  // already bytes2
+            ethers.getBytes(charset),   // already bytes2
+            ethers.getBytes(location),  // already bytes2
+            data
         ]);
-    
+
         return ethers.keccak256(packed);
     }
 
-    public async loadRoyalty(request: RequestOptions) {
+    public async loadRoyalty(request: any) {
+        // console.log(`request for ${request.host}:`);
+        // console.log(request);
         const site = await this.loadSite(request.host);
-        const dprAddress = await site?.getDPR?.();
-        
+        // console.log(`Site ${site.target}:`);
+        // console.log(site);
+        const dprAddress = await site?.DPR_();
+        // console.log(`DPR: ${dprAddress}`);
+
         // Connect to DPR using the factory
-        const dpr = DataPointRegistry__factory.connect(dprAddress, this.defaultSigner);
-        
+        const dprFactory = await ethers.getContractFactory("DataPointRegistry");
+        const dpr = dprFactory.attach(dprAddress);
+
         const dataPointAddress = this.calculateDataPointAddress(request);
+
+        // const actualDataPointAddress = await site?.LOCATE({ protocol: "WTTP/2.0", path: request.path });
+        // console.log(`Request path: ${request.path}`);
+        console.log(`Data point address: ${dataPointAddress}`);
+        // console.log(`Actual data point address: ${actualDataPointAddress}`);
         const royalty = await dpr.getRoyalty(dataPointAddress);
-        // console.log(`Royalty: ${royalty}`);
+        console.log(`Royalty: ${royalty}`);
         return royalty;
     }
 
     public async executeRequest(request: any) {
+        // console.log(`Executing request:`);
+        // console.log(request);
+
         let rawResponse;
         if (request.error) {
             rawResponse = {
@@ -270,7 +296,7 @@ export class WTTPHandler {
                 },
                 body: request.error.message
             };
-            return this.buildResponse(request.method, rawResponse);
+            return this.buildResponse(request, rawResponse);
         }
 
         switch (request.method) {
@@ -297,9 +323,39 @@ export class WTTPHandler {
                 break;
 
             case Method.PUT: {
+
+                if (!request.mimeType) {
+                    rawResponse = {
+                        head: {
+                            responseLine: {
+                                protocol: "WTTP/2.0",
+                                code: 400
+                            },
+                            headerInfo: DEFAULT_HEADER
+                        },
+                        body: "Client Error: MIME type is required for PUT requests"
+                    };
+                    return this.buildResponse(request, rawResponse);
+                }
+
+                if (!request.location) {
+                    rawResponse = {
+                        head: {
+                            responseLine: {
+                                protocol: "WTTP/2.0", 
+                                code: 400
+                            },
+                            headerInfo: DEFAULT_HEADER
+                        },
+                        body: "Client Error: Content-Location is required for PUT requests"
+                    };
+                    return this.buildResponse(request, rawResponse);
+                }
+
                 const site = await this.loadSite(request.host);
                 const royalty = await this.loadRoyalty(request);
-                const tx = await site.PUT(
+
+                const tx = await site.connect(request.signer || this.defaultSigner).PUT(
                     request.requestLine,
                     request.mimeType,
                     request.charset,
@@ -308,17 +364,20 @@ export class WTTPHandler {
                     request.data,
                     { value: royalty }
                 );
+
                 const receipt = await tx.wait();
                 const event = receipt.logs?.find((e: any) => e.fragment.name === 'PUTSuccess');
                 rawResponse = event?.args?.putResponse;
                 // console.log(rawResponse);
+                // console.log(`Event args:`);
+                // console.log(event?.args);
                 break;
             }
 
             case Method.PATCH: {
                 const site = await this.loadSite(request.host);
                 const royalty = await this.loadRoyalty(request);
-                const tx = await site.PATCH(
+                const tx = await site.connect(request.signer || this.defaultSigner).PATCH(
                     request.requestLine,
                     request.data,
                     request.chunk,
@@ -333,7 +392,7 @@ export class WTTPHandler {
 
             case Method.DEFINE: {
                 const site = await this.loadSite(request.host);
-                const tx = await site.DEFINE(
+                const tx = await site.connect(request.signer || this.defaultSigner).DEFINE(
                     request.host,
                     request.requestLine,
                     request.header
@@ -346,7 +405,7 @@ export class WTTPHandler {
 
             case Method.DELETE: {
                 const site = await this.loadSite(request.host);
-                const tx = await site.DELETE(
+                const tx = await site.connect(request.signer || this.defaultSigner).DELETE(
                     request.host,
                     request.requestLine
                 );
@@ -369,16 +428,24 @@ export class WTTPHandler {
                 };
         }
 
-        return rawResponse ? this.buildResponse(request.method, rawResponse) : 
-               new Response("Internal Server Error", { status: 500 });
+        console.log(`Request:`);
+        console.log(request.method);
+
+        // console.log(`Raw response:`);
+        // console.log(rawResponse);
+
+        rawResponse = rawResponse ? this.buildResponse(request, rawResponse) :
+            new Response("Internal Server Error", { status: 500 })
+
+        return rawResponse;
     }
 
-    public buildRequest(method: Method, request: RequestOptions) {
-        return this.requestBuilder.build(method, request);
+    public buildRequest(request: RequestOptions) {
+        return this.requestBuilder.build(request);
     }
 
-    public buildResponse(method: Method, rawResponse: any) {
-        return this.responseBuilder.build(method, rawResponse);
+    public buildResponse(request: any, rawResponse: any) {
+        return this.responseBuilder.build(request, rawResponse);
     }
 
     public parseURL(url: string) {

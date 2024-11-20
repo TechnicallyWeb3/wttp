@@ -7,7 +7,7 @@ export class ResponseBuilder {
         const headers = new Headers();
 
         // console.log(headResponse);
-        
+
         // Content Type and Charset
         if (headResponse.dataStructure.mimeType && headResponse.dataStructure.charset) {
             headers.set('Content-Type', 
@@ -77,18 +77,43 @@ export class ResponseBuilder {
         return headers;
     }
 
-    build(method: Method, rawResponse: any): Response {
-        const { head, body } = rawResponse;
-        
+    build(request: any, rawResponse: any): Response {
+        const { head } = rawResponse;
+        let body = rawResponse.body;
+
+        // console.log(body);
         // Use the new buildHeaders method
         const headers = head ? this.buildHeaders(head) : new Headers();
-        const statusCode = head ? head.responseLine.code : 500;
+        let statusCode = head ? head.responseLine.code : 500;
 
-        return new Response(body ? ethers.toUtf8String(body) : '', {
-            status: statusCode,
-            statusText: this.getStatusText(statusCode),
-            headers: headers
-        });
+        switch (request.method) {
+            case Method.GET:
+                body = body ? ethers.toUtf8String(body) : ''
+                break;
+
+            case Method.LOCATE:
+                body = {
+                    "Registry-Address": rawResponse.dprAddress,
+                    "DataPoint-Address": rawResponse.dataPoints
+                }
+            case Method.PUT:
+            case Method.PATCH:
+                console.log(`DataPoint Address: ${rawResponse.dataPointAddress}`);
+                body = request.data ? ethers.toUtf8String(request.data) : ''
+                break;
+            default:
+                body = "Method Not Allowed";
+                statusCode = 405;
+        } 
+
+        return new Response(
+            body,
+            {
+                status: statusCode,
+                statusText: this.getStatusText(statusCode),
+                headers: headers
+            }
+        );
     }
 
     private getStatusText(code: number): string {

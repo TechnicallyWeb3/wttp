@@ -90,6 +90,7 @@ export type LOCATEResponse = LOCATEResponseStructOutput;
 export interface RequestOptions {
     host: string;
     path: string;
+    method: Method;
     content?: string | Uint8Array;
     ifNoneMatch?: string;
     ifModifiedSince?: number;
@@ -106,6 +107,7 @@ export interface RequestOptions {
     acceptsLocation?: string[];
     chunkIndex?: number;
     header?: HeaderInfo;
+    signer?: ethers.Signer;
 }
 
 export interface ParsedURL {

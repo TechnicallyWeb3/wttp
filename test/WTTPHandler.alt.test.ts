@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { ethers } from 'ethers';
 import { WTTPHandler } from '../handlers/typescript/WTTPHandler.alt';
-import { WTTP } from '../typechain-types';
+import { DataPointStorage, WTTP } from '../typechain-types';
 import { Method } from '../types/types';
 import { MIME_TYPE_STRINGS, CHARSET_STRINGS, LANGUAGE_STRINGS, LOCATION_STRINGS } from '../types/constants';
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
@@ -84,7 +84,7 @@ describe('WTTPHandler', () => {
             });
 
             it('should return default for invalid charset', () => {
-                expect(handler.parseCharset('invalid-charset'))
+                expect(handler.parseCharset('utf-invalid'))
                     .to.equal('0x0000');
             });
         });
@@ -192,6 +192,9 @@ describe('WTTPHandler', () => {
             hre.ethers.toUtf8Bytes("Chunk 1")
         );
 
+        await firstPut.wait();
+        await secondPut.wait();
+
         for (let i = 1; i < 10; i++) {
             await site.PATCH(
                 { path: "/multifile.html", protocol: "WTTP/2.0" },
@@ -200,8 +203,6 @@ describe('WTTPHandler', () => {
                 tw3.address
             );
         }
-
-        await firstPut.wait();
 
         return { dataPointStorage, dataPointRegistry, WTTPBaseMethods, site, wttp, tw3, user1, user2 };
     }
@@ -313,7 +314,7 @@ describe('WTTPHandler', () => {
             const response2 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
                 method: Method.PATCH,
                 headers: {
-                    'Content-Type': 'text/html',
+                    'Content-Type': 'text/html; charset=utf-8',
                     'Content-Location': 'datapoint/chunk',
                     'Range': 'chunks=1'
                 },
@@ -367,7 +368,7 @@ describe('WTTPHandler', () => {
         let site1: WTTPBaseMethods;
         let site2: WTTPBaseMethods;
 
-        beforeEach(async () => {
+        async function setupSites() {
             const { wttp, WTTPBaseMethods, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
             handler = new WTTPHandler(wttp, user1);
 
@@ -392,24 +393,16 @@ describe('WTTPHandler', () => {
                 },
                 resourceAdmin: hre.ethers.ZeroHash
             };
-            site1 = await WTTPBaseMethods.connect(user1).deploy(dataPointRegistry.target, user1.address, defaultHeader);
 
+            site1 = await WTTPBaseMethods.connect(user1).deploy(dataPointRegistry.target, user1.address, defaultHeader);
             site2 = await WTTPBaseMethods.connect(user2).deploy(dataPointRegistry.target, user2.address, defaultHeader);
 
             await site1.waitForDeployment();
             await site2.waitForDeployment();
-        });
-
-        it('should handle royalties when multiple users write the same chunk', async () => {
-            const { dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
 
             // Initial content with first user
             const content = '<html><body>Test Content</body></html>';
-            
-            // Get initial balances
-            const user1InitialBalance = await dataPointRegistry.royaltyBalance(user1.address);
-            const user2InitialBalance = await dataPointRegistry.royaltyBalance(user2.address);
-            
+
             // First user writes content
             const response1 = await handler.fetch(`wttp://${site1.target}/royalty-test.html`, {
                 method: Method.PUT,
@@ -420,7 +413,21 @@ describe('WTTPHandler', () => {
                 body: content,
                 signer: user1
             });
+
+            return { dataPointRegistry, user1, user2, site1, site2, content, response1 };
+        };
+
+        it('should handle royalties when multiple users write the same chunk', async () => {
+            const { dataPointRegistry, user1, user2, site1, site2, content, response1 } = await loadFixture(setupSites);
+            
+            // Get initial balances
+            const user1InitialBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2InitialBalance = await dataPointRegistry.royaltyBalance(user2.address);
+            
             expect(response1.status).to.equal(201);
+
+            console.log("First PUT done");
+            // console.log(response1);
 
             // Second user writes the same content to a different path
             const response2 = await handler.fetch(`wttp://${site2.target}/royalty-test2.html`, {
@@ -434,6 +441,9 @@ describe('WTTPHandler', () => {
             });
             expect(response2.status).to.equal(201);
 
+            console.log("Second PUT done");
+            // console.log(response2);
+
             // Get final balances
             const user1FinalBalance = await dataPointRegistry.royaltyBalance(user1.address);
             const user2FinalBalance = await dataPointRegistry.royaltyBalance(user2.address);
@@ -444,14 +454,15 @@ describe('WTTPHandler', () => {
 
             // Verify both paths return the same content
             const getResponse1 = await handler.fetch(`wttp://${site1.target}/royalty-test.html`);
-            const getResponse2 = await handler.fetch(`wttp://${site1.target}/royalty-test2.html`);
+            const getResponse2 = await handler.fetch(`wttp://${site2.target}/royalty-test2.html`);
             
             expect(await getResponse1.text()).to.equal(content);
             expect(await getResponse2.text()).to.equal(content);
         });
 
         it('should handle royalties for multipart content', async () => {
-            const { WTTPBaseMethods, site, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
+            const { site, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
+            const { site1, site2, content, response1 } = await loadFixture(setupSites);
             
             const part1 = '<html><head><title>Royalty Test</title></head>';
             const part2 = '<body><h1>Test Content</h1></body></html>';
@@ -461,7 +472,7 @@ describe('WTTPHandler', () => {
             const user2InitialBalance = await dataPointRegistry.royaltyBalance(user2.address);
 
             // First user creates multipart file
-            await handler.fetch(`wttp://${site.target}/multipart1.html`, {
+            await handler.fetch(`wttp://${site1.target}/multipart1.html`, {
                 method: Method.PUT,
                 headers: {
                     'Content-Type': 'text/html',
@@ -471,7 +482,7 @@ describe('WTTPHandler', () => {
                 signer: user1
             });
 
-            await handler.fetch(`wttp://${site.target}/multipart1.html`, {
+            await handler.fetch(`wttp://${site1.target}/multipart1.html`, {
                 method: Method.PATCH,
                 headers: {
                     'Content-Type': 'text/html',
@@ -483,7 +494,7 @@ describe('WTTPHandler', () => {
             });
 
             // Second user creates file with same content
-            await handler.fetch(`wttp://${site.target}/multipart2.html`, {
+            await handler.fetch(`wttp://${site2.target}/multipart2.html`, {
                 method: Method.PUT,
                 headers: {
                     'Content-Type': 'text/html',
@@ -493,7 +504,7 @@ describe('WTTPHandler', () => {
                 signer: user2
             });
 
-            await handler.fetch(`wttp://${site.target}/multipart2.html`, {
+            await handler.fetch(`wttp://${site2.target}/multipart2.html`, {
                 method: Method.PATCH,
                 headers: {
                     'Content-Type': 'text/html',
@@ -513,11 +524,118 @@ describe('WTTPHandler', () => {
             expect(user2FinalBalance).to.equal(user2InitialBalance, "Second user should not receive royalties for reused chunks");
 
             // Verify content
-            const getResponse1 = await handler.fetch(`wttp://${site.target}/multipart1.html`);
-            const getResponse2 = await handler.fetch(`wttp://${site.target}/multipart2.html`);
+            const getResponse1 = await handler.fetch(`wttp://${site1.target}/multipart1.html`);
+            const getResponse2 = await handler.fetch(`wttp://${site2.target}/multipart2.html`);
+
+            const getResponse1Text = await getResponse1.text();
+            const getResponse2Text = await getResponse2.text();
             
-            expect(await getResponse1.text()).to.equal(part1 + part2);
-            expect(await getResponse2.text()).to.equal(part1 + part2);
+            console.log(`GET 1: ${getResponse1Text}`);
+            console.log(`GET 2: ${getResponse2Text}`);
+
+            expect(getResponse1Text).to.equal(part1 + part2);
+            expect(getResponse2Text).to.equal(part1 + part2);
+        });
+    });
+
+    describe('address calculation', () => {
+        let handler: WTTPHandler;
+        let dataPointStorage: DataPointStorage;
+
+        beforeEach(async () => {
+            const { wttp, dataPointStorage: dps } = await loadFixture(deployFixture);
+            handler = new WTTPHandler(wttp, mockSigner);
+            dataPointStorage = dps;
+        });
+
+        async function compareAddresses(content: string, mimeType: string, charset: string, location: string) {
+            const mimeTypeHex = MIME_TYPE_STRINGS[mimeType as keyof typeof MIME_TYPE_STRINGS];
+            const charsetHex = CHARSET_STRINGS[charset as keyof typeof CHARSET_STRINGS];
+            const locationHex = LOCATION_STRINGS[location as keyof typeof LOCATION_STRINGS];
+
+            // console.log("mimeType", mimeType);
+            // console.log("charset", charset);
+            // console.log("location", location);
+
+            // console.log("mimeTypeHex", mimeTypeHex);
+            // console.log("charsetHex", charsetHex);
+            // console.log("locationHex", locationHex);
+
+            // Calculate address using WTTPHandler
+            const handlerAddress = handler.calculateDataPointAddress({
+                host: 'localhost',
+                path: '/',
+                data: ethers.toUtf8Bytes(content),
+                mimeType: mimeTypeHex,
+                charset: charsetHex,
+                location: locationHex
+            });
+
+            // Calculate address using contract
+            const contractAddress = await dataPointStorage.calculateAddress({
+                structure: {
+                    mimeType: ethers.hexlify(MIME_TYPE_STRINGS[mimeType as keyof typeof MIME_TYPE_STRINGS]),
+                    charset: ethers.hexlify(CHARSET_STRINGS[charset as keyof typeof CHARSET_STRINGS] || '0x0000'),
+                    location: ethers.hexlify(LOCATION_STRINGS[location as keyof typeof LOCATION_STRINGS])
+                },
+                data: ethers.toUtf8Bytes(content)
+            });
+
+            expect(handlerAddress).to.equal(contractAddress);
+        }
+
+        it('should match contract address calculation for simple content', async () => {
+            await compareAddresses(
+                'Hello, World!',
+                'text/plain',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+
+        it('should match contract address calculation for HTML content', async () => {
+            await compareAddresses(
+                '<html><body>Test Content</body></html>',
+                'text/html',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+
+        it('should fail address calculation for empty content', async () => {
+            try {
+                await compareAddresses(
+                '',
+                'text/plain',
+                'utf-8',
+                'datapoint/chunk'
+                );
+            } catch (error) {
+                expect(error).to.be.an.instanceOf(Error);
+                expect(error.message).to.equal('Data is required to calculate data point address');
+            }
+        });
+
+        it('should match contract address calculation for binary content', async () => {
+            // Create some binary content
+            const binaryContent = String.fromCharCode(...Array(256).keys());
+            await compareAddresses(
+                binaryContent,
+                'application/octet-stream',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+
+        it('should match contract address calculation for large content', async () => {
+            // Create a large string
+            const largeContent = 'A'.repeat(10000);
+            await compareAddresses(
+                largeContent,
+                'text/plain',
+                'utf-8',
+                'datapoint/chunk'
+            );
         });
     });
 });

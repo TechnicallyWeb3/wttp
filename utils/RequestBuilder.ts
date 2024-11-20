@@ -8,14 +8,13 @@ import {
 } from '../types/types';
 
 export class RequestBuilder {
-
-    build(method: Method, options: RequestOptions) {
+    async build(options: RequestOptions) {
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",
             path: options.path
         };
 
-        switch (method) {
+        switch (options.method) {
             case Method.GET: {
                 const requestHeader: RequestHeader = {
                     accept: options.accepts || [],
@@ -31,64 +30,155 @@ export class RequestBuilder {
                     rangeEnd: options.range?.end || 0
                 };
 
-                return { method, requestLine, requestHeader, getRequest };
+                return { method: options.method, requestLine, requestHeader, getRequest, signer: options.signer };
             }
 
             case Method.HEAD:
             case Method.LOCATE:
             case Method.DELETE:
-                return { method, host: options.host, requestLine };
+                return { method: options.method, host: options.host, requestLine, signer: options.signer };
 
             case Method.PUT: {
+
+                if (!options.content) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: Content is required for PUT requests'
+                        }
+                    };
+                }
                 const content = options.content instanceof Uint8Array
                     ? options.content
-                    : ethers.toUtf8Bytes(options.content || '');
+                    : ethers.toUtf8Bytes(options.content);
+
+                if (!options.mimeType) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: MIME type is required for PUT requests'
+                        }
+                    };
+                }
+
+                if (!options.location) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: Content-Location is required for PUT requests'
+                        }
+                    };
+                }
 
                 return {
-                    method,
+                    method: options.method,
                     host: options.host,
                     requestLine,
-                    mimeType: ethers.hexlify(options.mimeType || "0x7468"), // default text/html
-                    charset: ethers.hexlify(options.charset || "0x7574"),    // default utf-8
-                    location: ethers.hexlify(options.location || "0x0101"), // default datapoint/chunk
+                    mimeType: ethers.hexlify(options.mimeType),
+                    charset: ethers.hexlify(options.charset || "0x0000"),
+                    location: ethers.hexlify(options.location),
                     publisher: options.publisher,
-                    data: content
+                    data: content,
+                    signer: options.signer
                 };
             }
 
             case Method.PATCH: {
+
+                if (!options.content) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: Content is required for PATCH requests'
+                        }
+                    };
+                }
+
                 const content = options.content instanceof Uint8Array
                     ? options.content
                     : ethers.toUtf8Bytes(options.content || '');
 
+                if (!options.mimeType) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: MIME type is required for PATCH requests'
+                        }
+                    };
+                }
+
+                if (!options.location) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: Content-Location is required for PATCH requests'
+                        }
+                    };
+                }
+
                 return {
-                    method,
+                    method: options.method,
                     host: options.host,
                     requestLine,
+                    mimeType: ethers.hexlify(options.mimeType),
+                    charset: ethers.hexlify(options.charset || "0x0000"),
+                    location: ethers.hexlify(options.location),
                     data: content,
                     chunk: options.chunkIndex,
-                    publisher: options.publisher
+                    publisher: options.publisher,
+                    signer: options.signer
                 };
             }
 
             case Method.DEFINE: {
+                if (!options.header) {
+                    return {
+                        method: options.method,
+                        host: options.host,
+                        requestLine,
+                        error: {
+                            code: 400,
+                            message: 'Client Error: Header is required for DEFINE requests'
+                        }
+                    };
+                }
                 return {
-                    method,
+                    method: options.method,
                     host: options.host,
                     requestLine,
-                    header: options.header
+                    header: options.header,
+                    signer: options.signer
                 };
             }
 
             default: {
                 return {
-                    method,
+                    method: options.method,
                     host: options.host,
                     requestLine,
                     error: {
                         code: 501,
-                        message: `Client Error: Unsupported method: ${method}`
-                    }
+                        message: `Request Error: Unsupported method: ${options.method}`
+                    },
+                    signer: options.signer
                 };
             }
         }
