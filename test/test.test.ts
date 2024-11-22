@@ -40,7 +40,7 @@ describe("Test Contracts", function () {
     it("should get Test contract address and call test() function through Test2", async function () {
         // Get Test contract address from Test2
         const testAddress = await test2.test();
-        console.log("Test contract address:", testAddress);
+        // console.log("Test contract address:", testAddress);
 
         // Connect to Test contract using its address
         const TestFactory = await ethers.getContractFactory("Test");
@@ -48,7 +48,7 @@ describe("Test Contracts", function () {
         
         // Call test() function directly on Test contract
         const testResult = await testContract.test();
-        console.log("Test function return value:", testResult);
+        // console.log("Test function return value:", testResult);
 
         // Verify the return value
         expect(testResult).to.equal("Hello, World!");
