@@ -379,7 +379,7 @@ struct PUTResponse {
     bytes32 dataPointAddress;
 }
 
-abstract contract WTTPBaseMethods is WTTPStorage {
+abstract contract WTTPSite is WTTPStorage {
 
     string public constant WTTP_VERSION = "WTTP/2.0";
 

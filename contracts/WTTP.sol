@@ -44,10 +44,10 @@ contract WTTP {
         RequestHeader memory _requestHeader,
         GETRequest memory _getRequest
     ) public view returns (GETResponse memory getResponse) {
-        LOCATEResponse memory _locateResponse = WTTPBaseMethods(
+        LOCATEResponse memory _locateResponse = WTTPSite(
             _getRequest.host
         ).LOCATE(_requestLine);
-        DataPointStorage _dataPointStorage = WTTPBaseMethods(_getRequest.host)
+        DataPointStorage _dataPointStorage = WTTPSite(_getRequest.host)
             .DPR_()
             .DPS_();
         getResponse.head = _locateResponse.head;
@@ -107,21 +107,21 @@ contract WTTP {
         address _host,
         RequestLine memory _requestLine
     ) public view returns (HEADResponse memory headResponse) {
-        return WTTPBaseMethods(_host).HEAD(_requestLine);
+        return WTTPSite(_host).HEAD(_requestLine);
     }
 
     function LOCATE(
         address _host,
         RequestLine memory _requestLine
     ) public view returns (LOCATEResponse memory locateResponse) {
-        return WTTPBaseMethods(_host).LOCATE(_requestLine);
+        return WTTPSite(_host).LOCATE(_requestLine);
     }
 
     function OPTIONS(
         address _host,
         RequestLine memory _requestLine
     ) public view returns (HEADResponse memory optionsResponse) {
-        optionsResponse = WTTPBaseMethods(_host).HEAD(_requestLine);
+        optionsResponse = WTTPSite(_host).HEAD(_requestLine);
         
         // If OPTIONS method isn't allowed, return 405
         if (!_methodAllowed(optionsResponse.headerInfo.methods, Method.OPTIONS)) {
@@ -138,7 +138,7 @@ contract WTTP {
         address _host,
         RequestLine memory _requestLine
     ) public view returns (HEADResponse memory traceResponse) {
-        traceResponse = WTTPBaseMethods(_host).HEAD(_requestLine);
+        traceResponse = WTTPSite(_host).HEAD(_requestLine);
         
         // If TRACE method isn't allowed, return 405
         if (!_methodAllowed(traceResponse.headerInfo.methods, Method.TRACE)) {

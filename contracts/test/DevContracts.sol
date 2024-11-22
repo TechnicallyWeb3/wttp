@@ -108,8 +108,8 @@ contract Dev_WTTPStorage is WTTPStorage {
 
 }
 
-contract Dev_WTTPBaseMethods is WTTPBaseMethods {
-    constructor(address _dpr, address _owner) WTTPBaseMethods(_dpr, _owner, HeaderInfo(CacheControl(0, 0, false, false, false, false, false, 0, 0, false, false), 0, Redirect(0, ""), bytes32(0))) {}
+contract Dev_WTTPBaseMethods is WTTPSite {
+    constructor(address _dpr, address _owner) WTTPSite(_dpr, _owner, HeaderInfo(CacheControl(0, 0, false, false, false, false, false, 0, 0, false, false), 0, Redirect(0, ""), bytes32(0))) {}
 }
 
 
