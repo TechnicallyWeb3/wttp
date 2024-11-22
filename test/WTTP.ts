@@ -4,7 +4,7 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { WTTP, Dev_WTTPBaseMethods, DataPointRegistry, DataPointStorage } from "../typechain-types";
+import { WTTP, MyFirstWTTPSite, DataPointRegistry, DataPointStorage } from "../typechain-types";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 describe("WTTP", function () {
@@ -17,8 +17,8 @@ describe("WTTP", function () {
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
         const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
 
-        const WTTPBaseMethods = await hre.ethers.getContractFactory("Dev_WTTPBaseMethods");
-        const site = await WTTPBaseMethods.deploy(dataPointRegistry.target, tw3.address, {
+        const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
+        const site = await WTTPSite.deploy(dataPointRegistry.target, tw3.address, {
             cache: {
                 maxAge: 0,
                 sMaxage: 0,

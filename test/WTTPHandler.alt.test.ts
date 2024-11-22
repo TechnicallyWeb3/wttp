@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { ethers } from 'ethers';
 import { WTTPHandler } from '../handlers/typescript/WTTPHandler.alt';
-import { DataPointStorage, WTTP } from '../typechain-types';
+import { DataPointStorage, WTTP, WTTPSite } from '../typechain-types';
 import { Method } from '../types/types';
 import { MIME_TYPE_STRINGS, CHARSET_STRINGS, LANGUAGE_STRINGS, LOCATION_STRINGS } from '../types/constants';
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
@@ -147,8 +147,8 @@ describe('WTTPHandler', () => {
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
         const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
 
-        const WTTPBaseMethods = await hre.ethers.getContractFactory("Dev_WTTPBaseMethods");
-        const site = await WTTPBaseMethods.deploy(dataPointRegistry.target, tw3.address, {
+        const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
+        const site = await WTTPSite.deploy(dataPointRegistry.target, tw3.address, {
             cache: {
                 maxAge: 0,
                 sMaxage: 0,
@@ -204,7 +204,7 @@ describe('WTTPHandler', () => {
             );
         }
 
-        return { dataPointStorage, dataPointRegistry, WTTPBaseMethods, site, wttp, tw3, user1, user2 };
+        return { dataPointStorage, dataPointRegistry, WTTPSite, site, wttp, tw3, user1, user2 };
     }
 
     describe('fetch', () => {
@@ -365,11 +365,11 @@ describe('WTTPHandler', () => {
 
     describe('royalty handling', () => {
         let handler: WTTPHandler;
-        let site1: WTTPBaseMethods;
-        let site2: WTTPBaseMethods;
+        let site1: WTTPSite;
+        let site2: WTTPSite;
 
         async function setupSites() {
-            const { wttp, WTTPBaseMethods, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
+            const { wttp, WTTPSite, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
             handler = new WTTPHandler(wttp, user1);
 
             const defaultHeader = {
@@ -394,8 +394,8 @@ describe('WTTPHandler', () => {
                 resourceAdmin: hre.ethers.ZeroHash
             };
 
-            site1 = await WTTPBaseMethods.connect(user1).deploy(dataPointRegistry.target, user1.address, defaultHeader);
-            site2 = await WTTPBaseMethods.connect(user2).deploy(dataPointRegistry.target, user2.address, defaultHeader);
+            site1 = await WTTPSite.connect(user1).deploy(dataPointRegistry.target, user1.address, defaultHeader);
+            site2 = await WTTPSite.connect(user2).deploy(dataPointRegistry.target, user2.address, defaultHeader);
 
             await site1.waitForDeployment();
             await site2.waitForDeployment();

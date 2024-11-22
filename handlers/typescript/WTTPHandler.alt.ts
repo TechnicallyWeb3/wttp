@@ -1,5 +1,5 @@
 import { ethers } from 'hardhat';
-import { WTTP, WTTPBaseMethods__factory, DataPointRegistry__factory } from '../../typechain-types';
+import { WTTP, DataPointRegistry__factory, WTTPSite__factory } from '../../typechain-types';
 import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
@@ -234,7 +234,7 @@ export class WTTPHandler {
     // }
 
     public async loadSite(host: string, signer: ethers.Signer = this.defaultSigner) {
-        return WTTPBaseMethods__factory.connect(host, signer);
+        return WTTPSite__factory.connect(host, signer);
     }
 
     public calculateDataPointAddress(request: any): string {

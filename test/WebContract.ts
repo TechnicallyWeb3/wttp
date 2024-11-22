@@ -22,10 +22,10 @@ describe("WebContract (WTTP/2.0)", function () {
         const WTTPStorage = await hre.ethers.getContractFactory("Dev_WTTPStorage");
         const wttpStorage = await WTTPStorage.deploy(dataPointRegistry.target, tw3.address);
 
-        const WTTPBaseMethods = await hre.ethers.getContractFactory("Dev_WTTPBaseMethods");
-        const wttpBaseMethods = await WTTPBaseMethods.deploy(dataPointRegistry.target, tw3.address);
+        const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
+        const wttpSite = await WTTPSite.deploy(dataPointRegistry.target, tw3.address);
 
-        return { dataPointStorage, dataPointRegistry, wttpPermissions, wttpStorage, wttpBaseMethods, tw3, user1, user2 };
+        return { dataPointStorage, dataPointRegistry, wttpPermissions, wttpStorage, wttpSite, tw3, user1, user2 };
     }
 
     describe("WTTP Permissions", function () {
@@ -116,10 +116,10 @@ describe("WebContract (WTTP/2.0)", function () {
 
     describe("WTTP Methods", function () {
         it("Should allow site admin to PUT", async function () {
-            const { wttpBaseMethods, tw3 } = await loadFixture(deployFixture);
+            const { wttpSite, tw3 } = await loadFixture(deployFixture);
 
             const content = "<html><body>Hello, World!</body></html>";
-            await expect(wttpBaseMethods.PUT(
+            await expect(wttpSite.PUT(
                 { path: "/test.html", protocol: "WTTP/2.0" },
                 ethers.hexlify("0x7468"), // text/html
                 ethers.hexlify("0x7574"), // utf-8
@@ -129,28 +129,28 @@ describe("WebContract (WTTP/2.0)", function () {
             )).to.not.be.reverted;
 
             // Add debug output
-            const headResponse = await wttpBaseMethods.HEAD({ path: "/test.html", protocol: "WTTP/2.0" });
+            const headResponse = await wttpSite.HEAD({ path: "/test.html", protocol: "WTTP/2.0" });
             // console.log("HEAD Response:", headResponse);
 
             expect(headResponse.metadata.size).to.equal(content.length);
             expect(headResponse.metadata.version).to.equal(1);
 
             // Add debug output for LOCATE
-            const locations = await wttpBaseMethods.LOCATE({ path: "/test.html", protocol: "WTTP/2.0" });
+            const locations = await wttpSite.LOCATE({ path: "/test.html", protocol: "WTTP/2.0" });
             // console.log("Locations array:", locations);
             // console.log("Locations length:", locations);
             expect(locations.dataPoints.length).to.equal(1);
         });
 
         it("Should allow admin to PUT then PATCH multi-part resources", async function () {
-            const { wttpBaseMethods, dataPointStorage, tw3 } = await loadFixture(deployFixture);
+            const { wttpSite, dataPointStorage, tw3 } = await loadFixture(deployFixture);
 
             const part1 = "<html><body>First part";
             const part2 = " Second part";
             const part3 = " Third part</body></html>";
 
             // Add debug output for initial PUT
-            await wttpBaseMethods.PUT(
+            await wttpSite.PUT(
                 { path: "/multipart.html", protocol: "WTTP/2.0" },
                 ethers.hexlify("0x7468"),
                 ethers.hexlify("0x7574"),
@@ -159,51 +159,51 @@ describe("WebContract (WTTP/2.0)", function () {
                 ethers.toUtf8Bytes(part1)
             );
 
-            let headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            let headResponse = await wttpSite.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
             // console.log("\nAfter PUT:", {
             //     size: headResponse.metadata.size,
             //     version: headResponse.metadata.version
             // });
 
             // PATCH chunk 1
-            await wttpBaseMethods.PATCH(
+            await wttpSite.PATCH(
                 { path: "/multipart.html", protocol: "WTTP/2.0" },
                 ethers.toUtf8Bytes(part2),
                 1,
                 tw3.address
             );
 
-            headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            headResponse = await wttpSite.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
             // console.log("\nAfter PATCH 1:", {
             //     size: headResponse.metadata.size,
             //     version: headResponse.metadata.version
             // });
 
             // PATCH chunk 2
-            await wttpBaseMethods.PATCH(
+            await wttpSite.PATCH(
                 { path: "/multipart.html", protocol: "WTTP/2.0" },
                 ethers.toUtf8Bytes(part3),
                 2,
                 tw3.address
             );
 
-            headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            headResponse = await wttpSite.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
             // console.log("\nAfter PATCH 2:", {
             //     size: headResponse.metadata.size,
             //     version: headResponse.metadata.version
             // });
 
-            let  locations = await wttpBaseMethods.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            let  locations = await wttpSite.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
             // console.log("\nFinal locations:", locations);
             // console.log("Locations length:", locations.dataPoints.length);
             
             // Verify final state
-            headResponse = await wttpBaseMethods.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            headResponse = await wttpSite.HEAD({ path: "/multipart.html", protocol: "WTTP/2.0" });
             expect(headResponse.metadata.size).to.equal(part1.length + part2.length + part3.length);
             expect(headResponse.metadata.version).to.equal(3);
 
             // Verify all chunks are present
-            locations = await wttpBaseMethods.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
+            locations = await wttpSite.LOCATE({ path: "/multipart.html", protocol: "WTTP/2.0" });
             expect(locations.dataPoints.length).to.equal(3);
 
             // Verify data integrity
