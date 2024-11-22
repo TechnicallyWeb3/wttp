@@ -98,7 +98,7 @@ export class ResponseBuilder {
                 }
             case Method.PUT:
             case Method.PATCH:
-                console.log(`DataPoint Address: ${rawResponse.dataPointAddress}`);
+                // console.log(`DataPoint Address: ${rawResponse.dataPointAddress}`);
                 body = request.data ? ethers.toUtf8String(request.data) : ''
                 break;
             default:

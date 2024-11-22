@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { ethers } from 'ethers';
-import { WTTPHandler } from '../handlers/typescript/WTTPHandler.alt';
+import { WTTPHandler } from '../handlers/typescript/WTTPHandler';
 import { DataPointStorage, WTTP, WTTPSite } from '../typechain-types';
 import { Method } from '../types/types';
 import { MIME_TYPE_STRINGS, CHARSET_STRINGS, LANGUAGE_STRINGS, LOCATION_STRINGS } from '../types/constants';
@@ -426,7 +426,7 @@ describe('WTTPHandler', () => {
             
             expect(response1.status).to.equal(201);
 
-            console.log("First PUT done");
+            // console.log("First PUT done");
             // console.log(response1);
 
             // Second user writes the same content to a different path
@@ -441,7 +441,7 @@ describe('WTTPHandler', () => {
             });
             expect(response2.status).to.equal(201);
 
-            console.log("Second PUT done");
+            // console.log("Second PUT done");
             // console.log(response2);
 
             // Get final balances
@@ -530,8 +530,8 @@ describe('WTTPHandler', () => {
             const getResponse1Text = await getResponse1.text();
             const getResponse2Text = await getResponse2.text();
             
-            console.log(`GET 1: ${getResponse1Text}`);
-            console.log(`GET 2: ${getResponse2Text}`);
+            // console.log(`GET 1: ${getResponse1Text}`);
+            // console.log(`GET 2: ${getResponse2Text}`);
 
             expect(getResponse1Text).to.equal(part1 + part2);
             expect(getResponse2Text).to.equal(part1 + part2);
