@@ -18,7 +18,7 @@ const defaultAccount = {
 }
 
 const polygon = {
-  url: "https://polygon-rpc.com",
+  url: "https://polygon-bor-rpc.publicnode.com",
   chainId: 137,
   blockGasLimit: 200000000,
   accounts: defaultAccount

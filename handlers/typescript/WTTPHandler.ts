@@ -211,6 +211,16 @@ export class WTTPHandler {
     }
 
     public calculateDataPointAddress(request: any): string {
+        if (!request.data || request.data.length === 0) {
+            throw new Error("Data is required to calculate data point address");
+        }
+        if (!request.mimeType || request.mimeType === '0x0000') {
+            throw new Error("MIME type is required to calculate data point address");
+        }
+        if (!request.location || request.location === '0x0000') {
+            throw new Error("Location is required to calculate data point address");
+        }
+
         const data = request.data instanceof Uint8Array
             ? request.data
             : ethers.toUtf8Bytes(request.data);

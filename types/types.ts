@@ -114,6 +114,7 @@ export interface RequestOptions {
 export interface ParsedURL {
     host: string;
     path: string;
+    queryParams?: string[];
     networkName?: string;
 }
 

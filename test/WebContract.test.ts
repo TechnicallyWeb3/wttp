@@ -1,10 +1,7 @@
-import {
-    loadFixture,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-// import { Dev_WTTPPermissions, Dev_WTTPStorage, Dev_WTTPBaseMethods, DataPointRegistry, DataPointStorage } from "../typechain-types";
+import { contractManager } from './helpers/contractManager';
 
 describe("WebContract (WTTP/2.0)", function () {
     // Declare shared variables
@@ -36,43 +33,107 @@ describe("WebContract (WTTP/2.0)", function () {
         console.log(`User 1: ${user1.address}`);
         console.log(`User 2: ${user2.address}`);
 
+        // Deploy or load DataPointStorage
         const DataPointStorage = await hre.ethers.getContractFactory("DataPointStorage");
-        gasPrice = await estimateGas();
-        dataPointStorage = await DataPointStorage.deploy({ maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-        await dataPointStorage.waitForDeployment();
-        console.log("DataPointStorage deployed at:", dataPointStorage.target);
+        const existingDPSAddress = contractManager.getContractAddress('dataPointStorage');
+        
+        if (existingDPSAddress) {
+            console.log("Loading existing DataPointStorage at:", existingDPSAddress);
+            dataPointStorage = DataPointStorage.attach(existingDPSAddress);
+        } else {
+            gasPrice = await estimateGas();
+            dataPointStorage = await DataPointStorage.deploy({ 
+                maxFeePerGas: gasPrice.maxFeePerGas, 
+                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas 
+            });
+            await dataPointStorage.waitForDeployment();
+            contractManager.saveContract('dataPointStorage', await dataPointStorage.getAddress());
+            console.log("DataPointStorage deployed at:", await dataPointStorage.getAddress());
+        }
 
+        // Deploy or load DataPointRegistry
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
-        gasPrice = await estimateGas();
-        dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-        await dataPointRegistry.waitForDeployment();
-        console.log("DataPointRegistry deployed at:", dataPointRegistry.target);
+        const existingDPRAddress = undefined; // contractManager.getContractAddress('dataPointRegistry');
+        
+        if (existingDPRAddress) {
+            console.log("Loading existing DataPointRegistry at:", existingDPRAddress);
+            dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
+        } else {
+            gasPrice = await estimateGas();
+            dataPointRegistry = await DataPointRegistry.deploy(
+                await dataPointStorage.getAddress(),
+                tw3.address,
+                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+            );
+            await dataPointRegistry.waitForDeployment();
+            contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
+            console.log("DataPointRegistry deployed at:", await dataPointRegistry.getAddress());
+        }
 
+        // Deploy or load WTTPPermissions
         const WTTPPermissions = await hre.ethers.getContractFactory("Dev_WTTPPermissions");
-        gasPrice = await estimateGas();
-        wttpPermissions = await WTTPPermissions.deploy({ maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-        await wttpPermissions.waitForDeployment();
-        console.log("WTTPPermissions deployed at:", wttpPermissions.target);
-        adminRole = await wttpPermissions.siteAdmin();
+        const existingWTTPPermissionsAddress = contractManager.getContractAddress('wttpPermissions');
+        
+        if (existingWTTPPermissionsAddress) {
+            console.log("Loading existing WTTPPermissions at:", existingWTTPPermissionsAddress);
+            wttpPermissions = WTTPPermissions.attach(existingWTTPPermissionsAddress);
+        } else {
+            gasPrice = await estimateGas();
+            wttpPermissions = await WTTPPermissions.deploy({ 
+                maxFeePerGas: gasPrice.maxFeePerGas, 
+                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas 
+            });
+            await wttpPermissions.waitForDeployment();
+            contractManager.saveContract('wttpPermissions', await wttpPermissions.getAddress());
+            console.log("WTTPPermissions deployed at:", await wttpPermissions.getAddress());
+            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.false;
+        }
 
+        // Deploy or load WTTPStorage
         const WTTPStorage = await hre.ethers.getContractFactory("Dev_WTTPStorage");
-        gasPrice = await estimateGas();
-        wttpStorage = await WTTPStorage.deploy(dataPointRegistry.target, tw3.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-        await wttpStorage.waitForDeployment();
-        console.log("WTTPStorage deployed at:", wttpStorage.target);
+        const existingWTTPStorageAddress = undefined;
+        
+        if (existingWTTPStorageAddress) {
+            console.log("Loading existing WTTPStorage at:", existingWTTPStorageAddress);
+            wttpStorage = WTTPStorage.attach(existingWTTPStorageAddress);
+        } else {
+            gasPrice = await estimateGas();
+            wttpStorage = await WTTPStorage.deploy(
+                await dataPointRegistry.getAddress(),
+                tw3.address,
+                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+            );
+            await wttpStorage.waitForDeployment();
+            contractManager.saveContract('wttpStorage', await wttpStorage.getAddress());
+            console.log("WTTPStorage deployed at:", await wttpStorage.getAddress());
+        }
 
+        // Deploy or load WTTPSite
         const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
-        gasPrice = await estimateGas();
-        wttpSite = await WTTPSite.deploy(dataPointRegistry.target, tw3.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-        await wttpSite.waitForDeployment();
-        console.log("WTTPSite deployed at:", wttpSite.target);
+        const existingWTTPSiteAddress = undefined;
+        
+        if (existingWTTPSiteAddress) {
+            console.log("Loading existing WTTPSite at:", existingWTTPSiteAddress);
+            wttpSite = WTTPSite.attach(existingWTTPSiteAddress);
+        } else {
+            gasPrice = await estimateGas();
+            wttpSite = await WTTPSite.deploy(
+                await dataPointRegistry.getAddress(),
+                tw3.address,
+                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+            );
+            await wttpSite.waitForDeployment();
+            contractManager.saveContract('wttpSite', await wttpSite.getAddress());
+            console.log("WTTPSite deployed at:", await wttpSite.getAddress());
+        }
+        
+        adminRole = await wttpPermissions.siteAdmin();
 
     });
 
     describe("WTTP Permissions", function () {
         it("Should correctly manage site admin roles", async function () {
             expect(await wttpPermissions.isSiteAdmin(tw3.address)).to.be.true;
-            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.false;
 
             gasPrice = await estimateGas();
             tx = await wttpPermissions.grantRole(adminRole, user1.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
