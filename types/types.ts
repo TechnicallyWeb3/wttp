@@ -108,10 +108,12 @@ export interface RequestOptions {
     chunkIndex?: number;
     header?: HeaderInfo;
     signer?: ethers.Signer;
+    networkName?: string;
 }
 
 export interface ParsedURL {
     host: string;
     path: string;
+    networkName?: string;
 }
 

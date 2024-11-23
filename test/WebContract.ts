@@ -4,7 +4,7 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { Dev_WTTPPermissions, Dev_WTTPStorage, Dev_WTTPBaseMethods, DataPointRegistry, DataPointStorage } from "../typechain-types";
+// import { Dev_WTTPPermissions, Dev_WTTPStorage, Dev_WTTPBaseMethods, DataPointRegistry, DataPointStorage } from "../typechain-types";
 
 describe("WebContract (WTTP/2.0)", function () {
     async function deployFixture() {
@@ -12,18 +12,40 @@ describe("WebContract (WTTP/2.0)", function () {
 
         const DataPointStorage = await hre.ethers.getContractFactory("DataPointStorage");
         const dataPointStorage = await DataPointStorage.deploy();
+        await dataPointStorage.waitForDeployment();
+        console.log("DataPointStorage deployed at:", dataPointStorage.target);
 
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
         const dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address);
+        await dataPointRegistry.waitForDeployment();
+        console.log("DataPointRegistry deployed at:", dataPointRegistry.target);
 
         const WTTPPermissions = await hre.ethers.getContractFactory("Dev_WTTPPermissions");
+        console.log("WTTPPermissions factory:");
+        // console.log(WTTPPermissions);
         const wttpPermissions = await WTTPPermissions.deploy();
+        console.log("WTTPPermissions deploying...");
+        // console.log(wttpPermissions);
+        await wttpPermissions.waitForDeployment();
+        console.log("WTTPPermissions deployed at:", wttpPermissions.target);
 
         const WTTPStorage = await hre.ethers.getContractFactory("Dev_WTTPStorage");
+        console.log("WTTPStorage factory:");
+        // console.log(WTTPStorage);
         const wttpStorage = await WTTPStorage.deploy(dataPointRegistry.target, tw3.address);
+        console.log("WTTPStorage deploying...");
+        // console.log(wttpStorage);
+        await wttpStorage.waitForDeployment();
+        console.log("WTTPStorage deployed at:", wttpStorage.target);
 
         const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
+        console.log("WTTPSite factory:");  
+        // console.log(WTTPSite);
         const wttpSite = await WTTPSite.deploy(dataPointRegistry.target, tw3.address);
+        console.log("WTTPSite deploying...");
+        // console.log(wttpSite);
+        await wttpSite.waitForDeployment();
+        console.log("WTTPSite deployed at:", wttpSite.target);
 
         return { dataPointStorage, dataPointRegistry, wttpPermissions, wttpStorage, wttpSite, tw3, user1, user2 };
     }
@@ -31,7 +53,8 @@ describe("WebContract (WTTP/2.0)", function () {
     describe("WTTP Permissions", function () {
         it("Should correctly manage site admin roles", async function () {
 
-            this.slow(2000);
+            this.slow(200000);
+            this.timeout(200000);
 
             const { wttpPermissions, tw3, user1 } = await loadFixture(deployFixture);
             

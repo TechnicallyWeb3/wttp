@@ -47,9 +47,9 @@ async function main() {
     console.log("- Site 3:", site3.target);
 
     // Create handlers for each site
-    const handler1 = new WTTPHandler(wttp, creator1);
-    const handler2 = new WTTPHandler(wttp, creator2);
-    const handler3 = new WTTPHandler(wttp, creator3);
+    const handler1 = new WTTPHandler(wttp.target, creator1);
+    const handler2 = new WTTPHandler(wttp.target, creator2);
+    const handler3 = new WTTPHandler(wttp.target, creator3);
 
     // Shared JavaScript file content
     const sharedScript = `

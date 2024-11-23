@@ -1,27 +1,53 @@
-import { ethers } from 'hardhat';
-import { WTTP, DataPointRegistry__factory, WTTPSite__factory } from '../../typechain-types';
+import { ethers, network, switchNetwork } from 'hardhat';
+import { WTTP, WTTP__factory, DataPointRegistry__factory, WTTPSite__factory } from '../../typechain-types';
 import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
-import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from '../../types/constants';
+import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, WTTP_CONTRACT_ADDRESS } from '../../types/constants';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
 
 export class WTTPHandler {
     private wttp: WTTP;
     private defaultSigner: ethers.Signer;
+    private masterNetwork: string;
     private urlParser: URLParser;
     private requestBuilder: RequestBuilder;
     private responseBuilder: ResponseBuilder;
     private ensResolver: ENSResolver;
 
     constructor(
-        wttp: WTTP,
-        signer: ethers.Signer
+        wttp?: string | ethers.Addressable,
+        signer?: ethers.Signer,
+        networkName?: string
     ) {
-        this.wttp = wttp;
-        this.defaultSigner = signer;
+        if (!wttp) {
+            wttp = WTTP_CONTRACT_ADDRESS;
+        } 
+
+        if (!signer) {
+            signer = ethers.Wallet.createRandom();
+            // console.log(`Using random signer: ${signer.address}`);
+        }
+
+        if (!networkName) {
+            networkName = network.name;
+        }
+
         this.urlParser = new URLParser();
         this.requestBuilder = new RequestBuilder();
         this.responseBuilder = new ResponseBuilder();
         this.ensResolver = new ENSResolver();
+        this.defaultSigner = signer;
+        this.masterNetwork = networkName;
+        this.wttp = WTTP__factory.connect(wttp, signer);
+        
+        // // Initialize WTTP synchronously instead of asynchronously
+        // try {
+        //     // Remove network switching for testing
+        //     this.wttp = WTTP__factory.connect(wttp, signer);
+        //     console.log(`WTTPHandler initialized with WTTP at ${wttp}`);
+        // } catch (error) {
+        //     console.error('Failed to initialize WTTP:', error);
+        //     throw error; // Re-throw to make initialization failures more visible
+        // }
     }
 
     async fetch(url: string, options: {
@@ -41,7 +67,7 @@ export class WTTPHandler {
         body?: string | Uint8Array;
         signer?: ethers.Signer;
     } = {}): Promise<Response> {
-        const { host, path } = this.parseURL(url);
+        const { host, path, networkName } = this.parseURL(url);
         const request = this.buildRequest(
             {
                 method: options.method || Method.GET,
@@ -59,7 +85,8 @@ export class WTTPHandler {
                 acceptsCharset: this.parseAcceptsCharset(options.headers?.['Accept-Charset']),
                 acceptsLocation: this.parseAcceptsLanguage(options.headers?.['Accept-Language']),
                 chunkIndex: this.parseChunkIndex(options.headers?.['Range']),
-                signer: options.signer || this.defaultSigner
+                signer: options.signer || this.defaultSigner,
+                networkName: networkName || this.masterNetwork
             }
         );
 
@@ -139,102 +166,48 @@ export class WTTPHandler {
     public parseContent(request: any) {
         return request.data instanceof Uint8Array ? ethers.toUtf8String(request.data) : request.data;
     }
+    
+    public async loadWTTP(wttpAddress?: string, signer?: ethers.Signer, networkName?: string) {
 
-    // // Private helper methods
-    // public async prepareRequest(method: Method, url: string, options: any = {}) {
-    //     const { host, path } = this.parseURL(url);
-    //     const resolvedHost = await this.resolveHost(host);
+        if (!wttpAddress) {
+            wttpAddress = WTTP_CONTRACT_ADDRESS;
+        }
+        
+        if (networkName && networkName !== this.masterNetwork) {
+            // Switch networks if specified
+            await switchNetwork(networkName)
+        }
 
-    //     const requestLine: RequestLine = {
-    //         protocol: "WTTP/2.0",
-    //         path
-    //     };
+        const wttp = WTTP__factory.connect(wttpAddress, signer || this.defaultSigner);
 
-    //     switch (method) {
-    //         case Method.GET: {
-    //             const requestHeader: RequestHeader = {
-    //                 accept: options.accepts,
-    //                 acceptCharset: options.acceptsCharset,
-    //                 acceptLanguage: options.acceptsLocation,
-    //                 ifModifiedSince: options.ifModifiedSince || 0,
-    //                 ifNoneMatch: options.ifNoneMatch || ethers.ZeroHash
-    //             };
+        // console.log(`WTTP loaded at ${wttp.target}`);
 
-    //             const getRequest: GETRequest = {
-    //                 host: resolvedHost,
-    //                 rangeStart: options.range?.start || 0,
-    //                 rangeEnd: options.range?.end || 0
-    //             };
+        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
+            // Switch back to master network
+            await switchNetwork(this.masterNetwork);
+        }
 
-    //             return { method, requestLine, requestHeader, getRequest, signer: options.signer || this.defaultSigner };
-    //         }
+        return wttp;
+    }
 
-    //         case Method.HEAD:
-    //         case Method.LOCATE:
-    //         case Method.DELETE:
-    //             return { method, host: resolvedHost, requestLine, signer: options.signer || this.defaultSigner };
+    public async loadSite(
+        host: string, 
+        signer?: ethers.Signer,
+        networkName?: string
+    ) {
+        if (networkName && networkName !== this.masterNetwork) {
+            // Switch networks if specified
+            await switchNetwork(networkName);
+        }
 
-    //         case Method.PUT: {
-    //             const content = options.content instanceof Uint8Array
-    //                 ? options.content
-    //                 : ethers.toUtf8Bytes(options.content);
+        const site = WTTPSite__factory.connect(host, signer || this.defaultSigner);
 
-    //             return {
-    //                 method,
-    //                 host: resolvedHost,
-    //                 requestLine,
-    //                 mimeType: ethers.hexlify(options.mimeType || "0x7468"), // default text/html
-    //                 charset: ethers.hexlify(options.charset || "0x7574"),    // default utf-8
-    //                 location: ethers.hexlify(options.location || "0x0101"), // default datapoint/chunk
-    //                 publisher: options.publisher || this.defaultSigner,
-    //                 data: content,
-    //                 signer: options.signer || this.defaultSigner
-    //             };
-    //         }
+        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
+            // Switch back to master network
+            await switchNetwork(this.masterNetwork);
+        }
 
-    //         case Method.PATCH: {
-    //             const content = options.content instanceof Uint8Array
-    //                 ? options.content
-    //                 : ethers.toUtf8Bytes(options.content);
-
-    //             return {
-    //                 method,
-    //                 host: resolvedHost,
-    //                 requestLine,
-    //                 data: content,
-    //                 chunk: options.chunkIndex,
-    //                 publisher: options.publisher || this.defaultSigner,
-    //                 signer: options.signer || this.defaultSigner
-    //             };
-    //         }
-
-    //         case Method.DEFINE: {
-    //             return {
-    //                 method,
-    //                 host: resolvedHost,
-    //                 requestLine,
-    //                 header: options.header,
-    //                 signer: options.signer || this.defaultSigner
-    //             };
-    //         }
-
-    //         default: {
-    //             return {
-    //                 method,
-    //                 host: resolvedHost,
-    //                 requestLine,
-    //                 error: {
-    //                     code: 501,
-    //                     message: `Client Error: Unsupported method: ${method}`
-    //                 },
-    //                 signer: options.signer || this.defaultSigner
-    //             };
-    //         }
-    //     }
-    // }
-
-    public async loadSite(host: string, signer: ethers.Signer = this.defaultSigner) {
-        return WTTPSite__factory.connect(host, signer);
+        return site;
     }
 
     public calculateDataPointAddress(request: any): string {

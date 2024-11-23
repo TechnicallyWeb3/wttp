@@ -21,9 +21,17 @@ export class URLParser {
             throw new Error('URL parsing failed: Invalid URL format');
         }
         
-        const [host, ...pathParts] = cleanUrl.split('/');
+        const [hostParts, ...pathParts] = cleanUrl.split('/');
+        let host = hostParts;
+        let networkName = undefined;
+        
+        if (hostParts.includes(':')) {
+            const splitHost = hostParts.split(':');
+            networkName = splitHost[1];
+            host = splitHost[0];
+        }
         const path = pathParts.length > 0 ? '/' + pathParts.join('/') : '/';
         
-        return { host, path };
+        return { host, path, networkName };
     }
 } 

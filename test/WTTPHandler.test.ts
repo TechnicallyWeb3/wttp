@@ -3,21 +3,20 @@ import { ethers } from 'ethers';
 import { WTTPHandler } from '../handlers/typescript/WTTPHandler';
 import { DataPointStorage, WTTP, WTTPSite } from '../typechain-types';
 import { Method } from '../types/types';
-import { MIME_TYPE_STRINGS, CHARSET_STRINGS, LANGUAGE_STRINGS, LOCATION_STRINGS } from '../types/constants';
+import { MIME_TYPE_STRINGS, CHARSET_STRINGS, LANGUAGE_STRINGS, LOCATION_STRINGS, WTTP_CONTRACT_ADDRESS } from '../types/constants';
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 import hre from 'hardhat';
-import { WTTPBaseMethods } from '../typechain-types';
 
 describe('WTTPHandler', () => {
     let handler: WTTPHandler;
-    let mockWTTP: WTTP;
+    let mockWTTP: string | ethers.Addressable;
     let mockSigner: ethers.Signer;
 
     beforeEach(() => {
         // Create mock WTTP contract and signer
-        mockWTTP = {} as WTTP;
+        mockWTTP = WTTP_CONTRACT_ADDRESS;
         mockSigner = {} as ethers.Signer;
-        handler = new WTTPHandler(mockWTTP, mockSigner);
+        handler = new WTTPHandler();
     });
 
     describe('Header Parsing Methods', () => {
@@ -207,12 +206,113 @@ describe('WTTPHandler', () => {
         return { dataPointStorage, dataPointRegistry, WTTPSite, site, wttp, tw3, user1, user2 };
     }
 
+    describe('address calculation', () => {
+        let handler: WTTPHandler;
+        let dataPointStorage: DataPointStorage;
+
+        beforeEach(async () => {
+            const { wttp, dataPointStorage: dps } = await loadFixture(deployFixture);
+            handler = new WTTPHandler(wttp.target, mockSigner);
+            dataPointStorage = dps;
+        });
+
+        async function compareAddresses(content: string, mimeType: string, charset: string, location: string) {
+            const mimeTypeHex = MIME_TYPE_STRINGS[mimeType as keyof typeof MIME_TYPE_STRINGS];
+            const charsetHex = CHARSET_STRINGS[charset as keyof typeof CHARSET_STRINGS];
+            const locationHex = LOCATION_STRINGS[location as keyof typeof LOCATION_STRINGS];
+
+            // console.log("mimeType", mimeType);
+            // console.log("charset", charset);
+            // console.log("location", location);
+
+            // console.log("mimeTypeHex", mimeTypeHex);
+            // console.log("charsetHex", charsetHex);
+            // console.log("locationHex", locationHex);
+
+            // Calculate address using WTTPHandler
+            const handlerAddress = handler.calculateDataPointAddress({
+                host: 'localhost',
+                path: '/',
+                data: ethers.toUtf8Bytes(content),
+                mimeType: mimeTypeHex,
+                charset: charsetHex,
+                location: locationHex
+            });
+
+            // Calculate address using contract
+            const contractAddress = await dataPointStorage.calculateAddress({
+                structure: {
+                    mimeType: ethers.hexlify(MIME_TYPE_STRINGS[mimeType as keyof typeof MIME_TYPE_STRINGS]),
+                    charset: ethers.hexlify(CHARSET_STRINGS[charset as keyof typeof CHARSET_STRINGS] || '0x0000'),
+                    location: ethers.hexlify(LOCATION_STRINGS[location as keyof typeof LOCATION_STRINGS])
+                },
+                data: ethers.toUtf8Bytes(content)
+            });
+
+            expect(handlerAddress).to.equal(contractAddress);
+        }
+
+        it('should match contract address calculation for simple content', async () => {
+            await compareAddresses(
+                'Hello, World!',
+                'text/plain',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+
+        it('should match contract address calculation for HTML content', async () => {
+            await compareAddresses(
+                '<html><body>Test Content</body></html>',
+                'text/html',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+
+        it('should fail address calculation for empty content', async () => {
+            try {
+                await compareAddresses(
+                '',
+                'text/plain',
+                'utf-8',
+                'datapoint/chunk'
+                );
+            } catch (error) {
+                expect(error).to.be.an.instanceOf(Error);
+                expect(error.message).to.equal('Data is required to calculate data point address');
+            }
+        });
+
+        it('should match contract address calculation for binary content', async () => {
+            // Create some binary content
+            const binaryContent = String.fromCharCode(...Array(256).keys());
+            await compareAddresses(
+                binaryContent,
+                'application/octet-stream',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+
+        it('should match contract address calculation for large content', async () => {
+            // Create a large string
+            const largeContent = 'A'.repeat(10000);
+            await compareAddresses(
+                largeContent,
+                'text/plain',
+                'utf-8',
+                'datapoint/chunk'
+            );
+        });
+    });
+
     describe('fetch', () => {
         let handler: WTTPHandler;
 
         beforeEach(async () => {
             const { wttp, tw3 } = await loadFixture(deployFixture);
-            handler = new WTTPHandler(wttp, tw3);
+            handler = new WTTPHandler(wttp.target, tw3, hre.network.name);
         });
 
         it('should perform a basic GET request', async () => {
@@ -255,21 +355,16 @@ describe('WTTPHandler', () => {
         });
 
         it('should handle errors gracefully', async () => {
-            const { site } = await loadFixture(deployFixture);
-            
-            // Mock a failing request
-            const mockWTTP = {
-                ...site,
-                GET: async () => { throw new Error('Network error'); }
-            };
+            const { site, wttp } = await loadFixture(deployFixture);
 
             const [tw3] = await hre.ethers.getSigners();
             
-            handler = new WTTPHandler(mockWTTP as any, tw3);
+            handler = new WTTPHandler(wttp.target, tw3);
 
             try {
-                await handler.fetch(`wttp://${site.target}/nonexistent.html`);
-                expect.fail('Should have thrown an error');
+                const response = await handler.fetch(`wttp://${site.target}/nonexistent.html`);
+                // console.log("Response", response);
+                expect(response.status).to.equal(404);
             } catch (error: any) {
                 expect(error).to.be.instanceOf(Error);
                 expect(error.message).to.equal('Network error');
@@ -291,7 +386,7 @@ describe('WTTPHandler', () => {
 
         beforeEach(async () => {
             const { wttp, tw3 } = await loadFixture(deployFixture);
-            handler = new WTTPHandler(wttp, tw3);
+            handler = new WTTPHandler(wttp.target, tw3);
         });
 
         it('should create a multipart file using PUT and PATCH', async () => {
@@ -370,7 +465,7 @@ describe('WTTPHandler', () => {
 
         async function setupSites() {
             const { wttp, WTTPSite, dataPointRegistry, user1, user2 } = await loadFixture(deployFixture);
-            handler = new WTTPHandler(wttp, user1);
+            handler = new WTTPHandler(wttp.target, user1);
 
             const defaultHeader = {
                 cache: {
@@ -538,104 +633,5 @@ describe('WTTPHandler', () => {
         });
     });
 
-    describe('address calculation', () => {
-        let handler: WTTPHandler;
-        let dataPointStorage: DataPointStorage;
 
-        beforeEach(async () => {
-            const { wttp, dataPointStorage: dps } = await loadFixture(deployFixture);
-            handler = new WTTPHandler(wttp, mockSigner);
-            dataPointStorage = dps;
-        });
-
-        async function compareAddresses(content: string, mimeType: string, charset: string, location: string) {
-            const mimeTypeHex = MIME_TYPE_STRINGS[mimeType as keyof typeof MIME_TYPE_STRINGS];
-            const charsetHex = CHARSET_STRINGS[charset as keyof typeof CHARSET_STRINGS];
-            const locationHex = LOCATION_STRINGS[location as keyof typeof LOCATION_STRINGS];
-
-            // console.log("mimeType", mimeType);
-            // console.log("charset", charset);
-            // console.log("location", location);
-
-            // console.log("mimeTypeHex", mimeTypeHex);
-            // console.log("charsetHex", charsetHex);
-            // console.log("locationHex", locationHex);
-
-            // Calculate address using WTTPHandler
-            const handlerAddress = handler.calculateDataPointAddress({
-                host: 'localhost',
-                path: '/',
-                data: ethers.toUtf8Bytes(content),
-                mimeType: mimeTypeHex,
-                charset: charsetHex,
-                location: locationHex
-            });
-
-            // Calculate address using contract
-            const contractAddress = await dataPointStorage.calculateAddress({
-                structure: {
-                    mimeType: ethers.hexlify(MIME_TYPE_STRINGS[mimeType as keyof typeof MIME_TYPE_STRINGS]),
-                    charset: ethers.hexlify(CHARSET_STRINGS[charset as keyof typeof CHARSET_STRINGS] || '0x0000'),
-                    location: ethers.hexlify(LOCATION_STRINGS[location as keyof typeof LOCATION_STRINGS])
-                },
-                data: ethers.toUtf8Bytes(content)
-            });
-
-            expect(handlerAddress).to.equal(contractAddress);
-        }
-
-        it('should match contract address calculation for simple content', async () => {
-            await compareAddresses(
-                'Hello, World!',
-                'text/plain',
-                'utf-8',
-                'datapoint/chunk'
-            );
-        });
-
-        it('should match contract address calculation for HTML content', async () => {
-            await compareAddresses(
-                '<html><body>Test Content</body></html>',
-                'text/html',
-                'utf-8',
-                'datapoint/chunk'
-            );
-        });
-
-        it('should fail address calculation for empty content', async () => {
-            try {
-                await compareAddresses(
-                '',
-                'text/plain',
-                'utf-8',
-                'datapoint/chunk'
-                );
-            } catch (error) {
-                expect(error).to.be.an.instanceOf(Error);
-                expect(error.message).to.equal('Data is required to calculate data point address');
-            }
-        });
-
-        it('should match contract address calculation for binary content', async () => {
-            // Create some binary content
-            const binaryContent = String.fromCharCode(...Array(256).keys());
-            await compareAddresses(
-                binaryContent,
-                'application/octet-stream',
-                'utf-8',
-                'datapoint/chunk'
-            );
-        });
-
-        it('should match contract address calculation for large content', async () => {
-            // Create a large string
-            const largeContent = 'A'.repeat(10000);
-            await compareAddresses(
-                largeContent,
-                'text/plain',
-                'utf-8',
-                'datapoint/chunk'
-            );
-        });
-    });
 });
