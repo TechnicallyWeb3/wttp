@@ -42,6 +42,7 @@ WTTP is a blockchain-based protocol that implements HTTP-like functionality for 
 ```
 npm install
 ```
+copy .env.template to .env and set the MNEMONIC environment variable
 
 
 ### Testing

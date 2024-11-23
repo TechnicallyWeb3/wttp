@@ -3,6 +3,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "hardhat-switch-network";
 import dotenv from "dotenv";
+import { setBlockGasLimit } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 dotenv.config();
 
@@ -33,7 +34,7 @@ const ethereum = {
 const sepolia = {
   url: "https://ethereum-sepolia-rpc.publicnode.com",
   chainId: 11155111,
-  gasPrice: 4500000000,
+  setBlockGasLimit: 30000000,
   accounts: defaultAccount
 }
 const base = {
