@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { contractManager } from './helpers/contractManager';
+import { contractManager } from '../utils/contractManager';
 
 describe("WebContract (WTTP/2.0)", function () {
     // Declare shared variables
@@ -53,7 +53,7 @@ describe("WebContract (WTTP/2.0)", function () {
 
         // Deploy or load DataPointRegistry
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
-        const existingDPRAddress = undefined; // contractManager.getContractAddress('dataPointRegistry');
+        const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
         
         if (existingDPRAddress) {
             console.log("Loading existing DataPointRegistry at:", existingDPRAddress);
@@ -91,7 +91,7 @@ describe("WebContract (WTTP/2.0)", function () {
 
         // Deploy or load WTTPStorage
         const WTTPStorage = await hre.ethers.getContractFactory("Dev_WTTPStorage");
-        const existingWTTPStorageAddress = undefined;
+        const existingWTTPStorageAddress = undefined; // contractManager.getContractAddress('wttpStorage');
         
         if (existingWTTPStorageAddress) {
             console.log("Loading existing WTTPStorage at:", existingWTTPStorageAddress);
@@ -186,7 +186,7 @@ describe("WebContract (WTTP/2.0)", function () {
     describe("WTTP Storage", function () {
         describe("Resource Management", function () {
             it("Should create resource and verify data integrity", async function () {
-                const content = "<html><body>Hello, World!</body></html>";
+                const content = `<html><body>Should create resource and verify data integrity ${Date.now()}</body></html>`;
                 gasPrice = await estimateGas();
                 tx = await wttpStorage.createResource(
                     "/test.html",
@@ -212,7 +212,7 @@ describe("WebContract (WTTP/2.0)", function () {
 
     describe("WTTP Methods", function () {
         it("Should allow site admin to PUT", async function () {
-            const content = "<html><body>Hello again, World!</body></html>";
+            const content = `<html><body>Should allow site admin to PUT ${Date.now()}</body></html>`;
             gasPrice = await estimateGas();
             tx = await wttpSite.PUT(
                 { path: "/test.html", protocol: "WTTP/2.0" },
@@ -236,11 +236,11 @@ describe("WebContract (WTTP/2.0)", function () {
 
         it("Should allow admin to PUT then PATCH multi-part resources", async function () {
 
-            this.timeout(100000);
+            this.timeout(300000);
 
-            const part1 = "<html><body>First part";
-            const part2 = " Second part";
-            const part3 = " Third part</body></html>";
+            const part1 = `<html><body>First part ${Date.now()}`;
+            const part2 = ` Second part ${Date.now()}`;
+            const part3 = ` Third part ${Date.now()}</body></html>`;
 
             gasPrice = await estimateGas();
             tx = await wttpSite.PUT(

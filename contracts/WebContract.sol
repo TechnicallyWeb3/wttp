@@ -14,7 +14,8 @@ abstract contract WTTPPermissions is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(OWNER_ROLE, _owner);
         _setRoleAdmin(SITE_ADMIN_ROLE, OWNER_ROLE);
-        grantRole(SITE_ADMIN_ROLE, _owner);
+        _grantRole(SITE_ADMIN_ROLE, msg.sender);
+        _grantRole(SITE_ADMIN_ROLE, _owner);
     }
 
     function _isSiteAdmin(address _admin) internal view returns (bool) {
@@ -376,6 +377,7 @@ struct LOCATEResponse {
 
 struct PUTResponse {
     HEADResponse head;
+    address dprAddress;
     bytes32 dataPointAddress;
 }
 

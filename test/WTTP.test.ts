@@ -1,13 +1,14 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { contractManager } from './helpers/contractManager';
+import { contractManager } from '../utils/contractManager';
 import { 
     WTTP, 
     MyFirstWTTPSite, 
     DataPointRegistry, 
     DataPointStorage 
 } from "../typechain-types";
+import { DEFAULT_HEADER } from "../types/constants";
 
 describe("WTTP Protocol", function () {
     let dataPointStorage: DataPointStorage;
@@ -65,7 +66,7 @@ describe("WTTP Protocol", function () {
 
         // Similar pattern for other contracts...
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
-        const existingDPRAddress = undefined;
+        const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
         
         if (existingDPRAddress) {
             dataPointRegistry = DataPointRegistry.attach(existingDPRAddress) as DataPointRegistry;
@@ -85,7 +86,7 @@ describe("WTTP Protocol", function () {
 
         // Deploy WTTP Site
         const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
-        const existingSiteAddress = undefined;
+        const existingSiteAddress = undefined; // contractManager.getContractAddress('wttpSite');
         
         if (existingSiteAddress) {
             site = WTTPSite.attach(existingSiteAddress);
@@ -94,27 +95,7 @@ describe("WTTP Protocol", function () {
             site = await WTTPSite.deploy(
                 dataPointRegistry.target,
                 tw3.address,
-                {
-                    cache: {
-                        maxAge: 0,
-                        sMaxage: 0,
-                        noStore: false,
-                        noCache: false,
-                        immutableFlag: false,
-                        mustRevalidate: false,
-                        proxyRevalidate: false,
-                        staleWhileRevalidate: 0,
-                        staleIfError: 0,
-                        publicFlag: false,
-                        privateFlag: false
-                    },
-                    methods: 2913, // Default methods
-                    redirect: {
-                        code: 0,
-                        location: ""
-                    },
-                    resourceAdmin: ethers.ZeroAddress
-                }
+                DEFAULT_HEADER
                 // ,
                 // {
                 //     maxFeePerGas: gasPrice.maxFeePerGas,
@@ -149,7 +130,7 @@ describe("WTTP Protocol", function () {
         });
 
         it("Should successfully GET a single data point resource", async function () {
-            const content = "<html><body>Hello, World!</body></html>";
+            const content = `<html><body>Should successfully GET a single data point resource ${Date.now()}</body></html>`;
             await createTestResource("/test.html", content);
 
             const getResponse = await wttp.GET(
@@ -173,7 +154,7 @@ describe("WTTP Protocol", function () {
         });
 
         it("Should return 304 Not Modified when etag matches", async function () {
-            const content = "<html><body>Hello again, World!</body></html>";
+            const content = `<html><body>Should return 304 Not Modified when etag matches ${Date.now()}</body></html>`;
             await createTestResource("/etag-test.html", content);
 
             const headResponse = await site.HEAD({ 
@@ -208,10 +189,11 @@ describe("WTTP Protocol", function () {
         });
 
         it("Should successfully GET a 3-part resource", async function () {
+            this.timeout(100000);
             const parts = [
-                "<html><head><title>Multi-part Test</title></head>",
-                "<body><h1>Hello World</h1>",
-                "<p>This is a test</p></body></html>"
+                `<html><head><title>Multi-part Test ${Date.now()}</title></head>`,
+                `<body><h1>Hello World ${Date.now()}</h1>`,
+                `<p>This is a test ${Date.now()}</p></body></html>`
             ];
             const fullContent = parts.join("");
 
@@ -268,7 +250,7 @@ describe("WTTP Protocol", function () {
         });
 
         it("Should return 416 for invalid ranges", async function () {
-            await createTestResource("/range-test.txt", "Test content");
+            await createTestResource("/range-test.txt", `Test content ${Date.now()}`);
 
             const invalidRanges = [
                 { start: 5, end: 10 },   // Beyond file length

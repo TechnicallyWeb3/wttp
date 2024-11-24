@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import hre from "hardhat";
 import { MIME_TYPES, CHARSET_TYPES, LOCATION_TYPES, WTTP_CONTRACT_ADDRESS, DATAPOINT_REGISTRY_ADDRESS, DEFAULT_HEADER } from "../types/constants";
 import { WTTPHandler } from "../handlers/typescript/WTTPHandler";
 import { WTTP } from "../typechain-types";
@@ -13,22 +14,26 @@ async function main() {
     console.log("- Site 3 Creator:", creator3.address);
     
     // Get WTTPBaseMethods contract
-    const WTTPBaseMethods = await ethers.getContractFactory("Dev_WTTPBaseMethods");
-    const site1 = await WTTPBaseMethods.connect(creator1).deploy(
+    const WTTPSites = await hre.ethers.getContractFactory("MyFirstWTTPSite", creator1);
+    const site1 = await WTTPSites.deploy(
         DATAPOINT_REGISTRY_ADDRESS,
         creator1.address,
         DEFAULT_HEADER
     );
-    const site2 = await WTTPBaseMethods.connect(creator2).deploy(
+    console.log("Site 1 deployed to:", site1.target);
+    const site2 = await WTTPSites.connect(creator2).deploy(
         DATAPOINT_REGISTRY_ADDRESS,
         creator2.address,
         DEFAULT_HEADER
     );
-    const site3 = await WTTPBaseMethods.connect(creator3).deploy(
+    console.log("Site 2 deployed to:", site2.target);
+    const site3 = await WTTPSites.connect(creator3).deploy(
         DATAPOINT_REGISTRY_ADDRESS,
         creator3.address,
         DEFAULT_HEADER
     );
+    console.log("Site 3 deployed to:", site3.target);
+    
     await site1.waitForDeployment();
     await site2.waitForDeployment();
     await site3.waitForDeployment();
@@ -76,21 +81,23 @@ setInterval(updateTime, 1000);`;
 </body>
 </html>`;
 
-    await handler1.put(
-        site1.target,
-        "/site1/index.html",
-        site1Html,
-        'TEXT_HTML',
-        'UTF_8'
-    );
+    await handler1.fetch(`wttp://${site1.target}/site1/index.html`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'text/html',
+            'Content-Location': 'datapoint/chunk'
+        },
+        body: site1Html
+    });
 
-    await handler1.put(
-        site1.target,
-        "/site1/script.js",
-        sharedScript,
-        'TEXT_JAVASCRIPT',
-        'UTF_8'
-    );
+    await handler1.fetch(`wttp://${site1.target}/site1/script.js`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'text/javascript',
+            'Content-Location': 'datapoint/chunk'
+        },
+        body: sharedScript
+    });
 
     // Deploy Site 2 with creator2
     console.log("\nDeploying Site 2 with:", creator2.address);
@@ -111,21 +118,23 @@ setInterval(updateTime, 1000);`;
 </body>
 </html>`;
 
-    await handler2.put(
-        site2.target,
-        "/site2/index.html",
-        site2Html,
-        'TEXT_HTML',
-        'UTF_8'
-    );
+    await handler2.fetch(`wttp://${site2.target}/site2/index.html`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'text/html',
+            'Content-Location': 'datapoint/chunk'
+        },
+        body: site2Html
+    });
 
-    await handler2.put(
-        site2.target,
-        "/site2/script.js",
-        sharedScript,
-        'TEXT_JAVASCRIPT',
-        'UTF_8'
-    );
+    await handler2.fetch(`wttp://${site2.target}/site2/script.js`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'text/javascript',
+            'Content-Location': 'datapoint/chunk'
+        },
+        body: sharedScript
+    });
 
     // Deploy Site 3 with creator3
     console.log("\nDeploying Site 3 with:", creator3.address);
@@ -158,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const li = document.createElement('li');
         const a = document.createElement('a');
         a.textContent = heading.textContent;
-        a.href = '#' + heading.textContent.toLowerCase().replace(/\s+/g, '-');
+        a.href = '#' + heading.textContent.toLowerCase().replace(/\\s+/g, '-');
         heading.id = a.href.slice(1);
         li.appendChild(a);
         tocList.appendChild(li);
@@ -167,21 +176,23 @@ document.addEventListener('DOMContentLoaded', function() {
     toc.appendChild(tocList);
 });`;
 
-    await handler3.put(
-        site3.target,
-        "/site3/index.html",
-        site3Html,
-        'TEXT_HTML',
-        'UTF_8'
-    );
+    await handler3.fetch(`wttp://${site3.target}/site3/index.html`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'text/html',
+            'Content-Location': 'datapoint/chunk'
+        },
+        body: site3Html
+    });
 
-    await handler3.put(
-        site3.target,
-        "/site3/script.js",
-        site3Script,
-        'TEXT_JAVASCRIPT',
-        'UTF_8'
-    );
+    await handler3.fetch(`wttp://${site3.target}/site3/script.js`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'text/javascript',
+            'Content-Location': 'datapoint/chunk'
+        },
+        body: site3Script
+    });
 
     console.log("Deployed 3 example sites!");
 }

@@ -1,3 +1,5 @@
+import { ethers } from "hardhat";
+
 // MIME Types
 export const MIME_TYPES = {
     // Text types
@@ -437,26 +439,26 @@ export const DATAPOINT_REGISTRY_ADDRESS = '0x9A676e781A523b5d0C0e43731313A708CB6
 
 // Default header for WTTP contracts
 export const DEFAULT_HEADER = {
-    cache: {
-        maxAge: 0,
-        sMaxage: 0,
-        noStore: false,
-        noCache: false,
-        immutableFlag: false,
-        mustRevalidate: false,
-        proxyRevalidate: false,
-        staleWhileRevalidate: 0,
-        staleIfError: 0,
-        publicFlag: false,
-        privateFlag: false
-    },
-    methods: 0, // Will be set to default 2913 in contract
-    redirect: {
-        code: 0,
-        location: ""
-    },
-    resourceAdmin: "0x0000000000000000000000000000000000000000000000000000000000000000"
-} as const;
+        cache: {
+            maxAge: 0,
+            sMaxage: 0,
+            noStore: false,
+            noCache: false,
+            immutableFlag: false,
+            mustRevalidate: false,
+            proxyRevalidate: false,
+            staleWhileRevalidate: 0,
+            staleIfError: 0,
+            publicFlag: false,
+            privateFlag: false
+        },
+        methods: 2913, // Default methods
+        redirect: {
+            code: 0,
+            location: ""
+        },
+        resourceAdmin: ethers.ZeroAddress
+    } as const;
 
 // Supported protocols
 export const SUPPORTED_PROTOCOLS = ['wttp', 'http', 'https'];

@@ -1,59 +1,57 @@
 import { ethers } from "hardhat";
+import { contractManager } from '../utils/contractManager';
 
 async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deploying contracts with account:", deployer.address);
 
-    // Deploy DataPointStorage
+    // Deploy or load DataPointStorage
     const DataPointStorage = await ethers.getContractFactory("DataPointStorage");
-    const dataPointStorage = await DataPointStorage.deploy();
-    await dataPointStorage.waitForDeployment();
-    console.log("DataPointStorage deployed to:", dataPointStorage.target);
+    const existingDPSAddress = contractManager.getContractAddress('dataPointStorage');
+    let dataPointStorage;
+    
+    if (existingDPSAddress) {
+        console.log("Loading existing DataPointStorage at:", existingDPSAddress);
+        dataPointStorage = DataPointStorage.attach(existingDPSAddress);
+    } else {
+        dataPointStorage = await DataPointStorage.deploy();
+        await dataPointStorage.waitForDeployment();
+        console.log("DataPointStorage deployed to:", dataPointStorage.target);
+        contractManager.saveContract('dataPointStorage', dataPointStorage.target);
+    }
 
-    // Deploy DataPointRegistry
+    // Deploy or load DataPointRegistry
     const DataPointRegistry = await ethers.getContractFactory("DataPointRegistry");
-    const dataPointRegistry = await DataPointRegistry.deploy(
-        dataPointStorage.target,
-        deployer.address
-    );
-    await dataPointRegistry.waitForDeployment();
-    console.log("DataPointRegistry deployed to:", dataPointRegistry.target);
+    const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
+    let dataPointRegistry;
+    
+    if (existingDPRAddress) {
+        console.log("Loading existing DataPointRegistry at:", existingDPRAddress);
+        dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
+    } else {
+        dataPointRegistry = await DataPointRegistry.deploy(
+            dataPointStorage.target,
+            deployer.address
+        );
+        await dataPointRegistry.waitForDeployment();
+        console.log("DataPointRegistry deployed to:", dataPointRegistry.target);
+        contractManager.saveContract('dataPointRegistry', dataPointRegistry.target);
+    }
 
-    // Deploy WTTP Base Methods
-    const WTTPBaseMethods = await ethers.getContractFactory("Dev_WTTPBaseMethods");
-    const wttpBaseMethods = await WTTPBaseMethods.deploy(
-        dataPointRegistry.target,
-        deployer.address,
-        {
-            cache: {
-                maxAge: 0,
-                sMaxage: 0,
-                noStore: false,
-                noCache: false,
-                immutableFlag: false,
-                mustRevalidate: false,
-                proxyRevalidate: false,
-                staleWhileRevalidate: 0,
-                staleIfError: 0,
-                publicFlag: false,
-                privateFlag: false
-            },
-            methods: 2913,
-            redirect: {
-                code: 0,
-                location: ""
-            },
-            resourceAdmin: ethers.ZeroHash
-        }
-    );
-    await wttpBaseMethods.waitForDeployment();
-    console.log("WTTPBaseMethods deployed to:", wttpBaseMethods.target);
-
-    // Deploy WTTP
+    // Deploy or load WTTP
     const WTTP = await ethers.getContractFactory("WTTP");
-    const wttp = await WTTP.deploy();
-    await wttp.waitForDeployment();
-    console.log("WTTP deployed to:", wttp.target);
+    const existingWTTPAddress = contractManager.getContractAddress('wttp');
+    let wttp;
+    
+    if (existingWTTPAddress) {
+        console.log("Loading existing WTTP at:", existingWTTPAddress);
+        wttp = WTTP.attach(existingWTTPAddress);
+    } else {
+        wttp = await WTTP.deploy();
+        await wttp.waitForDeployment();
+        console.log("WTTP deployed to:", wttp.target);
+        contractManager.saveContract('wttp', wttp.target);
+    }
 
     // After all deployments:
     const fs = require('fs');
@@ -77,7 +75,6 @@ async function main() {
     return {
         dataPointStorage: dataPointStorage.target,
         dataPointRegistry: dataPointRegistry.target,
-        wttpBaseMethods: wttpBaseMethods.target,
         wttp: wttp.target
     };
 }

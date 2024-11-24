@@ -20,7 +20,7 @@ export class WTTPHandler {
     ) {
         if (!wttp) {
             wttp = WTTP_CONTRACT_ADDRESS;
-        } 
+        }
 
         if (!signer) {
             signer = ethers.Wallet.createRandom();
@@ -38,7 +38,7 @@ export class WTTPHandler {
         this.defaultSigner = signer;
         this.masterNetwork = networkName;
         this.wttp = WTTP__factory.connect(wttp, signer);
-        
+
         // // Initialize WTTP synchronously instead of asynchronously
         // try {
         //     // Remove network switching for testing
@@ -51,7 +51,7 @@ export class WTTPHandler {
     }
 
     async fetch(url: string, options: {
-        method?: Method;
+        method?: Method | string;
         headers?: {
             'If-None-Match'?: string;
             'If-Modified-Since'?: number;
@@ -68,9 +68,22 @@ export class WTTPHandler {
         signer?: ethers.Signer;
     } = {}): Promise<Response> {
         const { host, path, networkName } = this.parseURL(url);
+        // Convert string method to Method enum if needed
+        let convertedMethod;
+        if (typeof options.method === 'string') {
+            convertedMethod = Method[options.method.toUpperCase() as keyof typeof Method];
+            if (convertedMethod === undefined) {
+                throw new Error(`Invalid HTTP method: ${options.method}`);
+            }
+        } else if (!options.method) {
+            convertedMethod = Method.GET;
+        } else {
+            convertedMethod = options.method;
+        }
+
         const request = this.buildRequest(
             {
-                method: options.method || Method.GET,
+                method: convertedMethod || Method.GET,
                 host: host,
                 path: path,
                 content: options.body,
@@ -80,7 +93,7 @@ export class WTTPHandler {
                 mimeType: this.parseMimeType(options.headers?.['Content-Type']),
                 charset: this.parseCharset(options.headers?.['Content-Type']),
                 location: this.parseLocation(options.headers?.['Content-Location']),
-                publisher: options.headers?.['Publisher'] || this.defaultSigner.address,
+                publisher: options.headers?.['Publisher'] || ethers.ZeroAddress,
                 accepts: this.parseAccepts(options.headers?.['Accept']),
                 acceptsCharset: this.parseAcceptsCharset(options.headers?.['Accept-Charset']),
                 acceptsLocation: this.parseAcceptsLanguage(options.headers?.['Accept-Language']),
@@ -118,7 +131,7 @@ export class WTTPHandler {
     public parseCharset(contentType?: string) {
         if (!contentType) return "0x0000";
         contentType = contentType.includes(';') ? contentType.split(';')[1].trim() : contentType.trim();
-        contentType = contentType.includes('charset') ? contentType.split('=')[1].trim() : contentType;
+        contentType = contentType.includes('charset=') ? contentType.split('charset=')[1].trim() : contentType;
         if (contentType in CHARSET_STRINGS) {
             return CHARSET_STRINGS[contentType as keyof typeof CHARSET_STRINGS];
         }
@@ -166,13 +179,13 @@ export class WTTPHandler {
     public parseContent(request: any) {
         return request.data instanceof Uint8Array ? ethers.toUtf8String(request.data) : request.data;
     }
-    
+
     public async loadWTTP(wttpAddress?: string, signer?: ethers.Signer, networkName?: string) {
 
         if (!wttpAddress) {
             wttpAddress = WTTP_CONTRACT_ADDRESS;
         }
-        
+
         if (networkName && networkName !== this.masterNetwork) {
             // Switch networks if specified
             await switchNetwork(networkName)
@@ -191,7 +204,7 @@ export class WTTPHandler {
     }
 
     public async loadSite(
-        host: string, 
+        host: string,
         signer?: ethers.Signer,
         networkName?: string
     ) {
@@ -260,6 +273,8 @@ export class WTTPHandler {
         // console.log(`Actual data point address: ${actualDataPointAddress}`);
         const royalty = await dpr.getRoyalty(dataPointAddress);
         // console.log(`Royalty: ${royalty}`);
+        // console.log(`Publisher: ${request.publisher}`);
+        // console.log(`Data point address: ${dataPointAddress}`);
         return royalty;
     }
 
@@ -325,7 +340,7 @@ export class WTTPHandler {
                     rawResponse = {
                         head: {
                             responseLine: {
-                                protocol: "WTTP/2.0", 
+                                protocol: "WTTP/2.0",
                                 code: 400
                             },
                             headerInfo: DEFAULT_HEADER

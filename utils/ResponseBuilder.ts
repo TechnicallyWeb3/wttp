@@ -94,11 +94,13 @@ export class ResponseBuilder {
             case Method.LOCATE:
                 body = {
                     "Registry-Address": rawResponse.dprAddress,
-                    "DataPoint-Address": rawResponse.dataPoints
+                    "DataPoint-Addresses": rawResponse.dataPoints
                 }
             case Method.PUT:
             case Method.PATCH:
                 // console.log(`DataPoint Address: ${rawResponse.dataPointAddress}`);
+                headers.set('Registry-Address', rawResponse.dprAddress);
+                headers.set('ETag', rawResponse.dataPointAddress);
                 body = request.data ? ethers.toUtf8String(request.data) : ''
                 break;
             default:

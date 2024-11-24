@@ -1,16 +1,18 @@
 import { expect } from 'chai';
 import { ethers } from 'ethers';
 import { WTTPHandler } from '../handlers/typescript/WTTPHandler';
-import { DataPointStorage, WTTP, WTTPSite } from '../typechain-types';
+import { DataPointStorage, MyFirstWTTPSite__factory, WTTP, WTTPSite } from '../typechain-types';
 import { Method } from '../types/types';
 import { 
     MIME_TYPE_STRINGS, 
     CHARSET_STRINGS, 
     LANGUAGE_STRINGS, 
-    LOCATION_STRINGS 
+    LOCATION_STRINGS, 
+    DEFAULT_HEADER
 } from '../types/constants';
 import hre from 'hardhat';
-import { contractManager } from './helpers/contractManager';
+import { contractManager } from '../utils/contractManager';
+import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 
 describe('WTTPHandler', () => {
     let handler: WTTPHandler;
@@ -86,7 +88,7 @@ describe('WTTPHandler', () => {
         }
 
         const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
-        const existingDPRAddress = undefined;
+        const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
 
         if (existingDPRAddress) {
             console.log("Loading existing DataPointRegistry at:", existingDPRAddress);
@@ -110,10 +112,7 @@ describe('WTTPHandler', () => {
             site = WTTPSite.attach(existingSiteAddress);
         } else {
             gasPrice = await estimateGas();
-            site = await WTTPSite.deploy(dataPointRegistry.target, tw3.address, {
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            });
+            site = await WTTPSite.deploy(dataPointRegistry.target, tw3.address, DEFAULT_HEADER);
             await site.waitForDeployment();
             contractManager.saveContract('wttpSite', await site.getAddress());
             console.log("WTTPSite deployed at:", await site.getAddress());
@@ -234,6 +233,16 @@ describe('WTTPHandler', () => {
 
             it('should handle empty language header', () => {
                 expect(handler.parseAcceptsLanguage('')).to.deep.equal([]);
+            });
+        });
+
+        describe('parseChunkIndex', () => {
+            it('should parse valid chunk index', () => {
+                expect(handler.parseChunkIndex('chunks=5-10')).to.equal(5);
+            });
+
+            it('should return undefined for invalid chunk index', () => {
+                expect(handler.parseChunkIndex(undefined)).to.be.undefined;
             });
         });
     });
@@ -361,6 +370,147 @@ describe('WTTPHandler', () => {
         it('should handle 404 for non-existent resources', async function() {
             const response = await handler.fetch(`wttp://${site.target}/nonexistent.html`);
             expect(response.status).to.equal(404);
+        });
+    });
+
+    describe('multipart operations', () => {
+        let handler: WTTPHandler;
+
+        beforeEach(async () => {
+            handler = new WTTPHandler(wttp.target, tw3);
+        });
+
+        it('should create a multipart file using PUT and PATCH', async function() {
+            this.timeout(300000);
+            
+            // Initial content with PUT
+            const part1 = '<html><head><title>Multipart Test</title></head>';
+            const response1 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: part1
+            });
+            expect(response1.status).to.equal(201);
+
+            // Add second part with PATCH
+            const part2 = '<body><h1>Part 2 Content</h1>';
+            const response2 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                method: Method.PATCH,
+                headers: {
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Content-Location': 'datapoint/chunk',
+                    'Range': 'chunks=1'
+                },
+                body: part2,
+            });
+            expect(response2.status).to.equal(200);
+
+            // Add third part with PATCH
+            const part3 = '</body></html>';
+            const response3 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                method: Method.PATCH,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Range': 'chunks=2'
+                },
+                body: part3
+            });
+            expect(response3.status).to.equal(200);
+
+            // Verify complete content
+            const getResponse = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
+                headers: {
+                    'Range': 'chunks=0-2'
+                }
+            });
+            
+            expect(getResponse.status).to.equal(200);
+            expect(await getResponse.text()).to.equal(part1 + part2 + part3);
+        });
+    });
+
+    describe('royalty handling', () => {
+        let site1: WTTPSite;
+        let site2: WTTPSite;
+
+        async function setupSites() {
+
+            const site1Factory = await hre.ethers.getContractFactory("MyFirstWTTPSite", user1);
+
+            site1 = await site1Factory.deploy(
+                dataPointRegistry.target, 
+                user1.address, 
+                DEFAULT_HEADER
+            );
+            
+            gasPrice = await estimateGas();
+            const site2Factory = await hre.ethers.getContractFactory("MyFirstWTTPSite", user2);
+            site2 = await site2Factory.deploy(
+                dataPointRegistry.target, 
+                user2.address, 
+                DEFAULT_HEADER
+            );
+
+            await site1.waitForDeployment();
+            await site2.waitForDeployment();
+
+            const content = `<html><body>${'t'.repeat(1000)}</body></html>`;
+
+            const response1 = await handler.fetch(`wttp://${site1.target}/royalty-test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Publisher': user1.address
+                },
+                body: content,
+                signer: user1
+            });
+
+            return { dataPointRegistry, site1, site2, content, response1 };
+        }
+
+        it('should handle royalties when multiple users write the same chunk', async function() {
+            this.timeout(300000);
+            
+            const { dataPointRegistry, site1, site2, content, response1 } = await setupSites();
+            
+            const user1InitialBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2InitialBalance = await dataPointRegistry.royaltyBalance(user2.address);
+            
+            expect(response1.status).to.equal(201);
+            // console.log(`Data point registry address: ${dataPointRegistry.target}`);
+            // console.log(`Actual data point address: ${response1.headers.get('ETag')}`);
+
+            gasPrice = await estimateGas();
+            const response2 = await handler.fetch(`wttp://${site2.target}/royalty-test2.html`, {
+                method: "PUT",
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk',
+                    'Publisher': user2.address
+                },
+                body: content,
+                signer: user2
+            });
+            expect(response2.status).to.equal(201);
+            // console.log(`Actual data point address: ${response2.headers.get('ETag')}`);
+
+            const user1FinalBalance = await dataPointRegistry.royaltyBalance(user1.address);
+            const user2FinalBalance = await dataPointRegistry.royaltyBalance(user2.address);
+
+            expect(user1FinalBalance).to.be.greaterThan(0, "First user should receive royalty");
+            expect(user2FinalBalance).to.equal(user2InitialBalance, "Second user should not receive royalty for reused chunk");
+
+            const getResponse1 = await handler.fetch(`wttp://${site1.target}/royalty-test.html`);
+            const getResponse2 = await handler.fetch(`wttp://${site2.target}/royalty-test2.html`);
+            
+            expect(await getResponse1.text()).to.equal(content);
+            expect(await getResponse2.text()).to.equal(content);
         });
     });
 });

@@ -23,7 +23,7 @@ class ContractManager {
 
     private loadConfig(): Config {
         try {
-            return JSON.parse(fs.readFileSync(path.join(__dirname, '../../test.wttp.config.json'), 'utf8'));
+            return JSON.parse(fs.readFileSync(path.join(__dirname, '../test.wttp.config.json'), 'utf8'));
         } catch {
             return {};
         }
@@ -31,7 +31,7 @@ class ContractManager {
 
     private saveConfig() {
         fs.writeFileSync(
-            path.join(__dirname, '../../test.wttp.config.json'), 
+            path.join(__dirname, '../test.wttp.config.json'), 
             JSON.stringify(this.config, null, 2)
         );
     }
