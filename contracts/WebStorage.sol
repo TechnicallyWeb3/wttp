@@ -90,6 +90,7 @@ contract DataPointStorage {
 }
 
 contract DataPointRegistry {
+    
     struct DataPointRoyalty {
         uint256 gasUsed;
         address publisher;

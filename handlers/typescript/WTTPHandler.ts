@@ -1,25 +1,41 @@
 import { ethers, network, switchNetwork } from 'hardhat';
-import { WTTP, WTTP__factory, DataPointRegistry__factory, WTTPSite__factory } from '../../typechain-types';
+import { Signer, Addressable } from 'ethers';
+import { WTTP, WTTP__factory, DataPointRegistry__factory, WTTPSite__factory, WTTPSite } from '../../typechain-types';
 import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, WTTP_CONTRACT_ADDRESS } from '../../types/constants';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
 
 export class WTTPHandler {
+    public wttpAddress: string | Addressable;
     private wttp: WTTP;
-    private defaultSigner: ethers.Signer;
-    private masterNetwork: string;
+    public defaultSigner: Signer;
+    public masterNetwork: string;
     private urlParser: URLParser;
     private requestBuilder: RequestBuilder;
     private responseBuilder: ResponseBuilder;
     private ensResolver: ENSResolver;
 
+    public setWTTP(wttpAddress: string | Addressable) {
+        this.wttp = WTTP__factory.connect(String(wttpAddress), this.defaultSigner);
+        this.wttpAddress = wttpAddress;
+    }
+
+    public setSigner(signer: Signer) {
+        this.defaultSigner = signer;
+    }
+
+    public setNetwork(networkName: string) {
+        this.masterNetwork = networkName;
+        switchNetwork(networkName);
+    }
+
     constructor(
-        wttp?: string | ethers.Addressable,
-        signer?: ethers.Signer,
+        wttpAddress?: string | Addressable,
+        signer?: Signer,
         networkName?: string
     ) {
-        if (!wttp) {
-            wttp = WTTP_CONTRACT_ADDRESS;
+        if (!wttpAddress) {
+            wttpAddress = WTTP_CONTRACT_ADDRESS;
         }
 
         if (!signer) {
@@ -35,9 +51,11 @@ export class WTTPHandler {
         this.requestBuilder = new RequestBuilder();
         this.responseBuilder = new ResponseBuilder();
         this.ensResolver = new ENSResolver();
+
         this.defaultSigner = signer;
         this.masterNetwork = networkName;
-        this.wttp = WTTP__factory.connect(wttp, signer);
+        this.wttpAddress = wttpAddress;
+        this.wttp = WTTP__factory.connect(String(wttpAddress), signer);
 
         // // Initialize WTTP synchronously instead of asynchronously
         // try {
@@ -65,7 +83,7 @@ export class WTTPHandler {
             [key: string]: any;
         };
         body?: string | Uint8Array;
-        signer?: ethers.Signer;
+        signer?: Signer;
     } = {}): Promise<Response> {
         const { host, path, networkName } = this.parseURL(url);
         // Convert string method to Method enum if needed
@@ -105,7 +123,19 @@ export class WTTPHandler {
 
         // console.log(request);
 
-        return this.executeRequest(await request);
+        if (networkName && networkName !== this.masterNetwork) {
+            // Switch networks if specified
+            await switchNetwork(networkName);
+        }
+
+        const response = this.executeRequest(await request);
+
+        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
+            // Switch back to master network
+            await switchNetwork(this.masterNetwork);
+        }
+
+        return response;
     }
 
     // Helper methods for parsing headers
@@ -180,7 +210,7 @@ export class WTTPHandler {
         return request.data instanceof Uint8Array ? ethers.toUtf8String(request.data) : request.data;
     }
 
-    public async loadWTTP(wttpAddress?: string, signer?: ethers.Signer, networkName?: string) {
+    public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: string) {
 
         if (!wttpAddress) {
             wttpAddress = WTTP_CONTRACT_ADDRESS;
@@ -205,21 +235,9 @@ export class WTTPHandler {
 
     public async loadSite(
         host: string,
-        signer?: ethers.Signer,
-        networkName?: string
-    ) {
-        if (networkName && networkName !== this.masterNetwork) {
-            // Switch networks if specified
-            await switchNetwork(networkName);
-        }
-
+        signer?: Signer
+    ): Promise<WTTPSite> {
         const site = WTTPSite__factory.connect(host, signer || this.defaultSigner);
-
-        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
-            // Switch back to master network
-            await switchNetwork(this.masterNetwork);
-        }
-
         return site;
     }
 
@@ -281,6 +299,11 @@ export class WTTPHandler {
     public async executeRequest(request: any) {
         // console.log(`Executing request:`);
         // console.log(request);
+
+        if (request.networkName && request.networkName !== this.masterNetwork) {
+            // Switch networks if specified
+            await switchNetwork(request.networkName);
+        }
 
         let rawResponse;
         if (request.error) {
@@ -364,7 +387,7 @@ export class WTTPHandler {
                 );
 
                 const receipt = await tx.wait();
-                const event = receipt.logs?.find((e: any) => e.fragment.name === 'PUTSuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'PUTSuccess');
                 rawResponse = event?.args?.putResponse;
                 // console.log(rawResponse);
                 // console.log(`Event args:`);
@@ -383,7 +406,7 @@ export class WTTPHandler {
                     { value: royalty }
                 );
                 const receipt = await tx.wait();
-                const event = receipt.logs?.find((e: any) => e.fragment.name === 'PATCHSuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'PATCHSuccess');
                 rawResponse = event?.args?.patchResponse;
                 break;
             }
@@ -396,7 +419,7 @@ export class WTTPHandler {
                     request.header
                 );
                 const receipt = await tx.wait();
-                const event = receipt.logs?.find((e: any) => e.fragment.name === 'DEFINESuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'DEFINESuccess');
                 rawResponse = event?.args?.defineResponse;
                 break;
             }
@@ -408,7 +431,7 @@ export class WTTPHandler {
                     request.requestLine
                 );
                 const receipt = await tx.wait();
-                const event = receipt.logs?.find((e: any) => e.fragment.name === 'DELETESuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'DELETESuccess');
                 rawResponse = event?.args?.deleteResponse;
                 break;
             }

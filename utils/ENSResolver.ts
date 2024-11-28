@@ -10,7 +10,7 @@ export class ENSResolver {
 
         // If the host is an ENS name, resolve it
         if (host.endsWith('.eth')) {
-            const provider = new ethers.JsonRpcProvider();
+            const provider = new ethers.JsonRpcProvider('https://eth.public-rpc.com');
             return await provider.resolveName(host) || host;
         }
 

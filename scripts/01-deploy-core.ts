@@ -50,7 +50,7 @@ async function main() {
         wttp = await WTTP.deploy();
         await wttp.waitForDeployment();
         console.log("WTTP deployed to:", wttp.target);
-        contractManager.saveContract('wttp', wttp.target);
+        contractManager.saveContract('wttp', String(wttp.target));
     }
 
     // After all deployments:
