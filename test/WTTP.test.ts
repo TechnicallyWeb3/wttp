@@ -1,14 +1,13 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { contractManager } from '../utils/contractManager';
+import { contractManager } from '../src/utils/contractManager';
 import { 
     WTTP, 
-    MyFirstWTTPSite, 
     DataPointRegistry, 
     DataPointStorage 
 } from "../typechain-types";
-import { DEFAULT_HEADER } from "../types/constants";
+import { DEFAULT_HEADER } from "../src/types/constants";
 
 describe("WTTP Protocol", function () {
     let dataPointStorage: DataPointStorage;

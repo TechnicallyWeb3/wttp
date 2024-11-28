@@ -1,6 +1,6 @@
 import { HEADResponse, Method } from '../types/types';
 import { HTTP_STATUS_STRINGS, HTTP_STATUS } from '../types/constants';
-import { ethers } from 'hardhat';
+import { toUtf8String } from 'ethers';
 
 export class ResponseBuilder {
     private buildHeaders(headResponse: HEADResponse): Headers {
@@ -88,7 +88,7 @@ export class ResponseBuilder {
 
         switch (request.method) {
             case Method.GET:
-                body = body ? ethers.toUtf8String(body) : ''
+                body = body ? toUtf8String(body) : ''
                 break;
 
             case Method.LOCATE:
@@ -101,7 +101,7 @@ export class ResponseBuilder {
                 // console.log(`DataPoint Address: ${rawResponse.dataPointAddress}`);
                 headers.set('Registry-Address', rawResponse.dprAddress);
                 headers.set('ETag', rawResponse.dataPointAddress);
-                body = request.data ? ethers.toUtf8String(request.data) : ''
+                body = request.data ? toUtf8String(request.data) : ''
                 break;
             default:
                 body = "Method Not Allowed";

@@ -1,19 +1,44 @@
 {
-  "name": "wttp",
-  "version": "2.0.1",
+  "name": "wttp-handler",
+  "version": "2.0.6",
   "scripts": {
-    "test": "npx hardhat test"
+    "test": "npx hardhat test",
+    "build": "tsc"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "hardhat": "^2.22.14",
     "hardhat-switch-network": "^1.1.1"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
     "dotenv": "^16.4.5",
-    "undici": "^6.20.1",
-    "undici-types": "^6.20.0"
-  }
+    "hardhat": "^2.22.14"
+  },
+  "description": "A decentralized version of the HTTP protocol using blockchain.",
+  "main": "dist/WTTPHandler.js",
+  "types": "dist/WTTPHandler.d.ts",
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TechnicallyWeb3/wttp.git"
+  },
+  "keywords": [
+    "web3",
+    "http",
+    "protocol",
+    "wttp",
+    "blockchain",
+    "decentralized",
+    "evm",
+    "solidity"
+  ],
+  "author": "Technically Web3",
+  "license": "AGPL-3.0-only",
+  "bugs": {
+    "url": "https://github.com/TechnicallyWeb3/wttp/issues"
+  },
+  "homepage": "https://github.com/TechnicallyWeb3/wttp#readme"
 }

@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ENSResolver } from '../utils/ENSResolver';
+import { ENSResolver } from '../src/utils/ENSResolver';
 
 describe('ENSResolver', () => {
     let resolver: ENSResolver;

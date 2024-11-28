@@ -1,8 +1,7 @@
 import { ethers } from "hardhat";
 import hre from "hardhat";
-import { MIME_TYPES, CHARSET_TYPES, LOCATION_TYPES, WTTP_CONTRACT_ADDRESS, DATAPOINT_REGISTRY_ADDRESS, DEFAULT_HEADER } from "../types/constants";
-import { WTTPHandler } from "../handlers/typescript/WTTPHandler";
-import { WTTP } from "../typechain-types";
+import { WTTP_CONTRACT_ADDRESS, DATAPOINT_REGISTRY_ADDRESS, DEFAULT_HEADER } from "../src/types/constants";
+import { WTTPHandler } from "../src/WTTPHandler";
 
 async function main() {
     // Get multiple signers, skip the first one (deployer)
@@ -41,7 +40,7 @@ async function main() {
     // Get DPR and DPS addresses from WTTPBaseMethods
     const dataPointRegistry = await ethers.getContractAt("DataPointRegistry", DATAPOINT_REGISTRY_ADDRESS);
     const dpsAddress = await dataPointRegistry.DPS_();
-    const wttp = await ethers.getContractAt("WTTP", WTTP_CONTRACT_ADDRESS) as WTTP;
+    const wttp = await ethers.getContractAt("WTTP", WTTP_CONTRACT_ADDRESS);
 
     console.log("Contract Addresses:");
     console.log("- DataPointRegistry:", DATAPOINT_REGISTRY_ADDRESS);

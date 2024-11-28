@@ -1,0 +1,42 @@
+# Source code
+src/
+
+# Tests
+contracts/test/
+*.test.ts
+*.spec.ts
+
+# Config files
+.gitignore
+.npmignore
+.eslintrc
+.prettierrc
+tsconfig.json
+
+# Development files
+coverage/
+artifacts/
+cache/
+node_modules/
+.env
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# Git files
+.git/
+.github/ 
+
+# Hardhat files
+ignition/
+scripts/
+
+# Typechain files
+typechain-types/
+
+# Tar files
+*.tar.gz
+*.tgz
+

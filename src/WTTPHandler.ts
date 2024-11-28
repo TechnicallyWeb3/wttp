@@ -1,9 +1,10 @@
-import { ethers, network, switchNetwork } from 'hardhat';
-import { Signer, Addressable } from 'ethers';
-import { WTTP, WTTP__factory, DataPointRegistry__factory, WTTPSite__factory, WTTPSite } from '../../typechain-types';
-import { RequestLine, RequestHeader, GETRequest, Method, RequestOptions } from '../../types/types';
-import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, WTTP_CONTRACT_ADDRESS } from '../../types/constants';
-import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from '../../utils/WTTPUtils';
+import 'hardhat-switch-network';
+import { network, switchNetwork } from 'hardhat';
+import { ethers, Signer, Addressable, EventLog } from 'ethers';
+import { WTTP, WTTP__factory,  WTTPSite__factory, WTTPSite, DataPointRegistry__factory } from '../typechain-types';
+import { Method, RequestOptions } from './types/types';
+import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, WTTP_CONTRACT_ADDRESS } from './types/constants';
+import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from './utils/WTTPUtils';
 
 export class WTTPHandler {
     public wttpAddress: string | Addressable;
@@ -280,8 +281,8 @@ export class WTTPHandler {
         // console.log(`DPR: ${dprAddress}`);
 
         // Connect to DPR using the factory
-        const dprFactory = await ethers.getContractFactory("DataPointRegistry");
-        const dpr = dprFactory.attach(dprAddress);
+        const dprFactory = DataPointRegistry__factory;
+        const dpr = dprFactory.connect(dprAddress, this.defaultSigner);
 
         const dataPointAddress = this.calculateDataPointAddress(request);
 
@@ -387,7 +388,7 @@ export class WTTPHandler {
                 );
 
                 const receipt = await tx.wait();
-                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'PUTSuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'PUTSuccess') as EventLog;
                 rawResponse = event?.args?.putResponse;
                 // console.log(rawResponse);
                 // console.log(`Event args:`);
@@ -406,7 +407,7 @@ export class WTTPHandler {
                     { value: royalty }
                 );
                 const receipt = await tx.wait();
-                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'PATCHSuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'PATCHSuccess') as EventLog;
                 rawResponse = event?.args?.patchResponse;
                 break;
             }
@@ -419,7 +420,7 @@ export class WTTPHandler {
                     request.header
                 );
                 const receipt = await tx.wait();
-                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'DEFINESuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'DEFINESuccess') as EventLog;
                 rawResponse = event?.args?.defineResponse;
                 break;
             }
@@ -431,7 +432,7 @@ export class WTTPHandler {
                     request.requestLine
                 );
                 const receipt = await tx.wait();
-                const event = receipt?.logs?.find((e: any) => e.fragment.name === 'DELETESuccess');
+                const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'DELETESuccess') as EventLog;
                 rawResponse = event?.args?.deleteResponse;
                 break;
             }
@@ -477,3 +478,5 @@ export class WTTPHandler {
         return this.ensResolver.resolve(host);
     }
 }
+
+export const wttp = new WTTPHandler();

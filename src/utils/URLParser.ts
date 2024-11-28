@@ -24,7 +24,7 @@ export class URLParser {
         const queryParams = urlParts[1] ? urlParts[1].split('&') : [];
         const [hostParts, ...pathParts] = urlParts[0].split('/');
         let host = hostParts;
-        let networkName = undefined;
+        let networkName: string | undefined = undefined;
 
         if (hostParts.includes(':')) {
             const splitHost = hostParts.split(':');

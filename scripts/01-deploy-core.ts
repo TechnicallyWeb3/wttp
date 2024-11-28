@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { contractManager } from '../utils/contractManager';
+import { contractManager } from '../src/utils/contractManager';
 
 async function main() {
     const [deployer] = await ethers.getSigners();
@@ -17,7 +17,7 @@ async function main() {
         dataPointStorage = await DataPointStorage.deploy();
         await dataPointStorage.waitForDeployment();
         console.log("DataPointStorage deployed to:", dataPointStorage.target);
-        contractManager.saveContract('dataPointStorage', dataPointStorage.target);
+        contractManager.saveContract('dataPointStorage', String(dataPointStorage.target));
     }
 
     // Deploy or load DataPointRegistry
@@ -35,7 +35,7 @@ async function main() {
         );
         await dataPointRegistry.waitForDeployment();
         console.log("DataPointRegistry deployed to:", dataPointRegistry.target);
-        contractManager.saveContract('dataPointRegistry', dataPointRegistry.target);
+        contractManager.saveContract('dataPointRegistry', String(dataPointRegistry.target));
     }
 
     // Deploy or load WTTP
@@ -57,7 +57,7 @@ async function main() {
     const fs = require('fs');
     const path = require('path');
     
-    const constantsPath = path.join(__dirname, '../types/constants.ts');
+    const constantsPath = path.join(__dirname, '../src/types/constants.ts');
     const constants = fs.readFileSync(constantsPath, 'utf8');
     const updatedConstants = constants
         .replace(

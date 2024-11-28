@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { contractManager } from '../utils/contractManager';
+import { contractManager } from '../src/utils/contractManager';
 
 describe("WebContract (WTTP/2.0)", function () {
     // Declare shared variables

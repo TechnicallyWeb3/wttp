@@ -44,7 +44,10 @@ class ContractManager {
         return this.config[networkName];
     }
 
-    public saveContract(contractName: string, address: string) {
+    public saveContract(
+        contractName: 'dataPointStorage' | 'dataPointRegistry' | 'wttpPermissions' | 'wttpStorage' | 'wttpSite',
+        address: string
+    ) {
         const networkName = network.name;
         if (networkName === 'hardhat') {
             return;
@@ -53,14 +56,16 @@ class ContractManager {
             this.config[networkName] = {};
         }
         
-        const addressKey = `${contractName}Address`;
+        const addressKey = `${contractName}Address` as keyof NetworkConfig;
         this.config[networkName][addressKey] = address;
         this.saveConfig();
     }
 
-    public getContractAddress(contractName: string): string | undefined {
+    public getContractAddress(
+        contractName: 'dataPointStorage' | 'dataPointRegistry' | 'wttpPermissions' | 'wttpStorage' | 'wttpSite'
+    ): string | undefined {
         const networkName = network.name;
-        return this.config[networkName]?.[`${contractName}Address`];
+        return this.config[networkName]?.[`${contractName}Address` as keyof NetworkConfig];
     }
 }
 

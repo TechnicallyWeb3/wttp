@@ -17,4 +17,12 @@ node_modules
 ignition/deployments/chain-31337
 
 # WTTP test deployments
-/test.wttp.config.json
+src/test.wttp.config.json
+
+# TypeScript files
+dist
+
+# Tar files
+*.tar.gz
+*.tgz
+

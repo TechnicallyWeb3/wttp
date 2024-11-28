@@ -1,5 +1,5 @@
-import { BytesLike } from "ethers";
-import { LOCATEResponseStructOutput } from "../typechain-types/contracts/WebContract.sol/WTTPBaseMethods";
+import { BytesLike, Signer } from "ethers";
+import { LOCATEResponseStructOutput } from "../../typechain-types/contracts/WebContract.sol/WTTPSite";
 
 export enum Method {
     GET = 'GET',
@@ -107,7 +107,7 @@ export interface RequestOptions {
     acceptsLocation?: string[];
     chunkIndex?: number;
     header?: HeaderInfo;
-    signer?: ethers.Signer;
+    signer?: Signer;
     networkName?: string;
 }
 

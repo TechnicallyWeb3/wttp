@@ -1,17 +1,17 @@
 import { expect } from 'chai';
 import { ethers } from 'ethers';
-import { WTTPHandler } from '../handlers/typescript/WTTPHandler';
+import { WTTPHandler } from '../src/WTTPHandler';
 import { DataPointStorage, MyFirstWTTPSite__factory, WTTP, WTTPSite } from '../typechain-types';
-import { Method } from '../types/types';
+import { Method } from '../src/types/types';
 import { 
     MIME_TYPE_STRINGS, 
     CHARSET_STRINGS, 
     LANGUAGE_STRINGS, 
     LOCATION_STRINGS, 
     DEFAULT_HEADER
-} from '../types/constants';
+} from '../src/types/constants';
 import hre from 'hardhat';
-import { contractManager } from '../utils/contractManager';
+import { contractManager } from '../src/utils/contractManager';
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 
 describe('WTTPHandler', () => {
