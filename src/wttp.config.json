@@ -1,0 +1,23 @@
+{
+  "masterNetwork": "seth",
+  "seth": {
+    "dataPointStorageAddress": "0xD68D293CF55695836A03793918E525213c024559",
+    "dataPointRegistryAddress": "0xa5Aa6020f635718e33F56748855a1C5b7839E1Fa",
+    "wttpAddress": "0x11924d4BC832195F4e3Db4a021ec878cd46e4b6D",
+    "wttpPermissionsAddress": "0xDf1b1cB35ff7BC6e074Bd0AD19a378e432122922",
+    "wttpStorageAddress": "0x37Cb5d7B319145Ab0BB1879E81868d0c73bE0959",
+    "wttpSiteAddress": "0x6676252B163816665184Fbb0EC0AB4c22Ee51E9B",
+    "statusMapAddress": "0xBF958441124eC481Eb12693947a4549f109f8b5d",
+    "typeMapAddress": "0x9Ea432460D2EB8a707d80E17aB7a6A0e03eFC513"
+  },
+  "localhost": {
+    "dataPointStorageAddress": "0x3F12149220569959Cec175441520B96FC9Ea009d",
+    "dataPointRegistryAddress": "0x48A86A764F648ef971A9C3c160E0B7D0cf542E8B",
+    "wttpPermissionsAddress": "0xdc73C720797F63F07e1674eAEC108Dc234557dB5",
+    "wttpStorageAddress": "0x58730Ca80caa36E7f1b738E1Df2dbcB4B78866cA",
+    "wttpSiteAddress": "0xC7712Ed49BC960C957F8Ae5D03e9D1f7AeD137f6",
+    "statusMapAddress": "0x553Eed5337A3A1Ed9Bc85971d981ccDE595EAd1c",
+    "typeMapAddress": "0x75c2D52827f4F7BfA9adf012dD6E99561594f190",
+    "wttpAddress": "0x4Fbf50e4135AF449cc085cca9025AAbE548bC295"
+  }
+}

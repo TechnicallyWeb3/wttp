@@ -1,16 +1,18 @@
 import 'hardhat-switch-network';
-import { network, switchNetwork } from 'hardhat';
 import { ethers, Signer, Addressable, EventLog } from 'ethers';
 import { WTTP, WTTP__factory,  WTTPSite__factory, WTTPSite, DataPointRegistry__factory } from '../typechain-types';
 import { Method, RequestOptions } from './types/types';
-import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, WTTP_CONTRACT_ADDRESS } from './types/constants';
+import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from './types/constants';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from './utils/WTTPUtils';
+import fs from 'fs';
+import path from 'path';
 
 export class WTTPHandler {
     public wttpAddress: string | Addressable;
     private wttp: WTTP;
     public defaultSigner: Signer;
     public masterNetwork: string;
+    public config: any;
     private urlParser: URLParser;
     private requestBuilder: RequestBuilder;
     private responseBuilder: ResponseBuilder;
@@ -27,7 +29,7 @@ export class WTTPHandler {
 
     public setNetwork(networkName: string) {
         this.masterNetwork = networkName;
-        switchNetwork(networkName);
+        this.switchNetwork(networkName);
     }
 
     constructor(
@@ -35,17 +37,20 @@ export class WTTPHandler {
         signer?: Signer,
         networkName?: string
     ) {
+
+        this.config = JSON.parse(fs.readFileSync(path.join(__dirname, 'wttp.config.json'), 'utf8'));
+        
+        if (!networkName) {
+            networkName = this.config.masterNetwork as string;
+        }
+
         if (!wttpAddress) {
-            wttpAddress = WTTP_CONTRACT_ADDRESS;
+            wttpAddress = this.getWTTPAddress(networkName);
         }
 
         if (!signer) {
             signer = ethers.Wallet.createRandom();
             // console.log(`Using random signer: ${signer.address}`);
-        }
-
-        if (!networkName) {
-            networkName = network.name;
         }
 
         this.urlParser = new URLParser();
@@ -126,14 +131,14 @@ export class WTTPHandler {
 
         if (networkName && networkName !== this.masterNetwork) {
             // Switch networks if specified
-            await switchNetwork(networkName);
+            await this.switchNetwork(networkName);
         }
 
         const response = this.executeRequest(await request);
 
         if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
             // Switch back to master network
-            await switchNetwork(this.masterNetwork);
+            await this.switchNetwork(this.masterNetwork);
         }
 
         return response;
@@ -213,13 +218,18 @@ export class WTTPHandler {
 
     public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: string) {
 
-        if (!wttpAddress) {
-            wttpAddress = WTTP_CONTRACT_ADDRESS;
+        if (!networkName) {
+            networkName = this.masterNetwork;
         }
 
         if (networkName && networkName !== this.masterNetwork) {
             // Switch networks if specified
-            await switchNetwork(networkName)
+            await this.switchNetwork(networkName)
+        }
+
+        
+        if (!wttpAddress) {
+            wttpAddress = this.getWTTPAddress(networkName);
         }
 
         const wttp = WTTP__factory.connect(wttpAddress, signer || this.defaultSigner);
@@ -228,10 +238,35 @@ export class WTTPHandler {
 
         if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
             // Switch back to master network
-            await switchNetwork(this.masterNetwork);
+            await this.switchNetwork(this.masterNetwork);
         }
 
         return wttp;
+    }
+
+    private async switchNetwork(networkName: string) {
+        throw new Error(`Function not implemented. switchNetwork(${networkName})`);
+    }
+
+    private getWTTPAddress(networkName: string): string {
+        const configPath = path.join(__dirname, 'wttp.config.json');
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const networkConfig = config[networkName];
+            if (networkConfig && networkConfig.wttpAddress) {
+                return networkConfig.wttpAddress;
+            } else {
+                throw new Error(`WTTP address not found for network: ${networkName}`);
+            }
+        } catch (error) {
+            if (error instanceof Error) {
+                console.error('Error reading WTTP address:', error.message);
+                throw error;
+            } else {
+                console.error('Error reading WTTP address:', error);
+                throw error;
+            }
+        }
     }
 
     public async loadSite(
@@ -303,7 +338,7 @@ export class WTTPHandler {
 
         if (request.networkName && request.networkName !== this.masterNetwork) {
             // Switch networks if specified
-            await switchNetwork(request.networkName);
+            await this.switchNetwork(request.networkName);
         }
 
         let rawResponse;
@@ -480,3 +515,4 @@ export class WTTPHandler {
 }
 
 export const wttp = new WTTPHandler();
+

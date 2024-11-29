@@ -7,7 +7,7 @@ import { setBlockGasLimit } from "@nomicfoundation/hardhat-toolbox/network-helpe
 
 dotenv.config();
 
-const mnemonic = process.env.MNEMONIC || "test test test test test test test test test test test junk";
+const mnemonic = process.env.WTTP_MNEMONIC || "test test test test test test test test test test test junk";
 // console.log(mnemonic.split(' ')[0]);
 const accountsPath = "m/44'/60'/0'/0";
 const accountsCount = 5;

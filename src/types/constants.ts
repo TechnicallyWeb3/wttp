@@ -431,13 +431,6 @@ export const TYPE_CATEGORY = {
     LANGUAGE_TYPE: 3
 } as const;
 
-// WTTP Contract ABI
-export const WTTP_CONTRACT_ABI = require('../../artifacts/contracts/WTTP.sol/WTTP.json').abi;
-// These will be key contract addresses for the WTTP protocol
-export const WTTP_CONTRACT_ADDRESS = '0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1' as const;
-export const DATAPOINT_REGISTRY_ADDRESS = '0x9A676e781A523b5d0C0e43731313A708CB607508' as const;
-export const MASTER_CHAIN = 'seth' as const;
-
 // Default header for WTTP contracts
 export const DEFAULT_HEADER = {
         cache: {

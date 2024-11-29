@@ -53,24 +53,24 @@ async function main() {
         contractManager.saveContract('wttp', String(wttp.target));
     }
 
-    // After all deployments:
-    const fs = require('fs');
-    const path = require('path');
+    // // After all deployments:
+    // const fs = require('fs');
+    // const path = require('path');
     
-    const constantsPath = path.join(__dirname, '../src/types/constants.ts');
-    const constants = fs.readFileSync(constantsPath, 'utf8');
-    const updatedConstants = constants
-        .replace(
-            /export const WTTP_CONTRACT = '.*?'/,
-            `export const WTTP_CONTRACT = '${wttp.target}'`
-        )
-        .replace(
-            /export const DATAPOINT_REGISTRY = '.*?'/,
-            `export const DATAPOINT_REGISTRY = '${dataPointRegistry.target}'`
-        );
+    // const constantsPath = path.join(__dirname, '../src/types/constants.ts');
+    // const constants = fs.readFileSync(constantsPath, 'utf8');
+    // const updatedConstants = constants
+    //     .replace(
+    //         /export const WTTP_CONTRACT = '.*?'/,
+    //         `export const WTTP_CONTRACT = '${wttp.target}'`
+    //     )
+    //     .replace(
+    //         /export const DATAPOINT_REGISTRY = '.*?'/,
+    //         `export const DATAPOINT_REGISTRY = '${dataPointRegistry.target}'`
+    //     );
     
-    fs.writeFileSync(constantsPath, updatedConstants);
-    console.log('Updated WTTP_CONTRACT and DATAPOINT_REGISTRY in constants file');
+    // fs.writeFileSync(constantsPath, updatedConstants);
+    // console.log('Updated WTTP_CONTRACT and DATAPOINT_REGISTRY in constants file');
 
     return {
         dataPointStorage: dataPointStorage.target,

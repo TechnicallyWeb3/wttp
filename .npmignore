@@ -1,8 +1,9 @@
 # Source code
 src/
+contracts/
 
 # Tests
-contracts/test/
+test/
 *.test.ts
 *.spec.ts
 
@@ -12,6 +13,7 @@ contracts/test/
 .eslintrc
 .prettierrc
 tsconfig.json
+hardhat.config.ts
 
 # Development files
 coverage/
@@ -19,6 +21,7 @@ artifacts/
 cache/
 node_modules/
 .env
+.env.template
 *.log
 
 # IDE files
