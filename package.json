@@ -1,23 +1,26 @@
 {
   "name": "wttp-handler",
-  "version": "2.0.8",
+  "version": "2.0.17",
   "scripts": {
     "test": "npx hardhat test",
+    "postbuild": "copyfiles \"contracts/**/*\" dist && copyfiles \"wttp.config.json\" dist/src",
     "build": "tsc"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "copyfiles": "^2.4.1",
+    "dotenv": "^16.4.5",
     "hardhat": "^2.22.14",
     "hardhat-switch-network": "^1.1.1"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
-    "dotenv": "^16.4.5"
+    "ethers": "^6.13.4"
   },
   "description": "A decentralized version of the HTTP protocol using blockchain.",
-  "main": "dist/WTTPHandler.js",
-  "types": "dist/WTTPHandler.d.ts",
+  "main": "dist/src/WTTPHandler.js",
+  "types": "dist/src/WTTPHandler.d.ts",
   "directories": {
     "test": "test"
   },

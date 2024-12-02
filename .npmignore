@@ -1,6 +1,7 @@
 # Source code
 src/
-contracts/
+/contracts/
+lib/
 
 # Tests
 test/
@@ -14,6 +15,7 @@ test/
 .prettierrc
 tsconfig.json
 hardhat.config.ts
+/wttp.config.json
 
 # Development files
 coverage/
@@ -37,7 +39,7 @@ ignition/
 scripts/
 
 # Typechain files
-typechain-types/
+/typechain-types/
 
 # Tar files
 *.tar.gz

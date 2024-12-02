@@ -1,0 +1,26 @@
+{
+  "masterNetwork": "seth",
+  "networks": {
+    "seth": {
+      "chainId": 11155111,
+      "rpcUrls": [
+        "https://ethereum-sepolia-rpc.publicnode.com"
+      ],
+      "contracts": {
+        "dataPointStorageAddress": "0xC895ADeB2be477EEDCA4C7F21eA6e5c2d04C678B",
+        "dataPointRegistryAddress": "0xA9cE85A861445e191A980b8099B045958509A039",
+        "wttpAddress": "0x1B3593184EfB360B21530d2FB5eDAC863B08A447"
+      }
+    },
+    "localhost": {
+      "rpcUrls": [
+        "http://localhost:8545"
+      ],
+      "contracts": {
+        "dataPointStorageAddress": "0x097654191b54113A9708283a54490634DD57880d",
+        "dataPointRegistryAddress": "0xA56D51EdEfd6348634041840eA81E81d1A111092",
+        "wttpAddress": "0x5013f7c21a06CAD8c352142fbeb9579D7948FE13"
+      }
+    }
+  }
+}

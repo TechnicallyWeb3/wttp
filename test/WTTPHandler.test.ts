@@ -11,7 +11,7 @@ import {
     DEFAULT_HEADER
 } from '../src/types/constants';
 import hre from 'hardhat';
-import { contractManager } from '../src/utils/contractManager';
+import { contractManager } from '../lib/contractManager';
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 
 describe('WTTPHandler', () => {

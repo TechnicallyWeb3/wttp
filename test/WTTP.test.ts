@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
-import { contractManager } from '../src/utils/contractManager';
+import { contractManager } from '../lib/contractManager';
 import { 
     WTTP, 
     DataPointRegistry, 

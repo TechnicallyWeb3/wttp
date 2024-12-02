@@ -1,9 +1,8 @@
-import 'hardhat-switch-network';
 import { ethers, Signer, Addressable, EventLog } from 'ethers';
 import { WTTP, WTTP__factory,  WTTPSite__factory, WTTPSite, DataPointRegistry__factory } from '../typechain-types';
 import { Method, RequestOptions } from './types/types';
-import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES } from './types/constants';
-import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser } from './utils/WTTPUtils';
+import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, MASTER_NETWORK, SupportedNetworks } from './types/constants';
+import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser, ProviderManager } from './utils/WTTPUtils';
 import fs from 'fs';
 import path from 'path';
 
@@ -17,6 +16,7 @@ export class WTTPHandler {
     private requestBuilder: RequestBuilder;
     private responseBuilder: ResponseBuilder;
     private ensResolver: ENSResolver;
+    private providerManager: ProviderManager;
 
     public setWTTP(wttpAddress: string | Addressable) {
         this.wttp = WTTP__factory.connect(String(wttpAddress), this.defaultSigner);
@@ -41,7 +41,7 @@ export class WTTPHandler {
         this.config = JSON.parse(fs.readFileSync(path.join(__dirname, 'wttp.config.json'), 'utf8'));
         
         if (!networkName) {
-            networkName = this.config.masterNetwork as string;
+            networkName = MASTER_NETWORK as string;
         }
 
         if (!wttpAddress) {
@@ -57,7 +57,7 @@ export class WTTPHandler {
         this.requestBuilder = new RequestBuilder();
         this.responseBuilder = new ResponseBuilder();
         this.ensResolver = new ENSResolver();
-
+        this.providerManager = new ProviderManager();
         this.defaultSigner = signer;
         this.masterNetwork = networkName;
         this.wttpAddress = wttpAddress;
@@ -511,6 +511,10 @@ export class WTTPHandler {
 
     public async resolveHost(host: string) {
         return this.ensResolver.resolve(host);
+    }
+
+    public async getProvider(networkName: SupportedNetworks) {
+        return this.providerManager.getProvider(networkName);
     }
 }
 

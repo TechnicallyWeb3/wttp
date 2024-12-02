@@ -1,5 +1,17 @@
 import { ZeroAddress } from 'ethers';
 
+export const MASTER_NETWORK = 'seth';
+
+export type SupportedNetworks = 
+    // To add a new network, add it to the end of the list using the following format:
+    // 'networkName' | 'chainId' | 'networkSymbol';
+    'hardhat' | '1337' | 'hre' |
+    'localhost' | '31337' | 'local' |
+    'sepolia' | '11155111' | 'seth' | 
+    'ethereum' | '1' | 'eth' |
+    'base' | '8453' | 'beth' |
+    'polygon' | '137' | 'pol';
+
 // MIME Types
 export const MIME_TYPES = {
     // Text types

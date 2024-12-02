@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { contractManager } from '../src/utils/contractManager';
+import { contractManager } from '../lib/contractManager';
 
 async function main() {
     const [deployer] = await ethers.getSigners();
