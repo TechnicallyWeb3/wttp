@@ -7,9 +7,9 @@
         "https://ethereum-sepolia-rpc.publicnode.com"
       ],
       "contracts": {
-        "dataPointStorageAddress": "0xC895ADeB2be477EEDCA4C7F21eA6e5c2d04C678B",
-        "dataPointRegistryAddress": "0xA9cE85A861445e191A980b8099B045958509A039",
-        "wttpAddress": "0x1B3593184EfB360B21530d2FB5eDAC863B08A447"
+        "dataPointStorageAddress": "0xfcb4212Bc1Fa17828C2fc2b4548db24Db8403465",
+        "dataPointRegistryAddress": "0x5d32C19033A602D936221237ACdc6A7e7135D724",
+        "wttpAddress": "0x9FEB4C6a9594095aD32a4101386c077E0138B564"
       }
     },
     "localhost": {

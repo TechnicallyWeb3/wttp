@@ -1,5 +1,5 @@
 import { HEADResponse, Method } from '../types/types';
-import { HTTP_STATUS_STRINGS, HTTP_STATUS } from '../types/constants';
+import { HTTP_STATUS_STRINGS } from '../types/constants';
 import { toUtf8String } from 'ethers';
 
 export class ResponseBuilder {
@@ -120,7 +120,8 @@ export class ResponseBuilder {
 
     private getStatusText(code: number): string {
         // Check if the code exists in our status codes
-        if (code in HTTP_STATUS) {
+        if (code in HTTP_STATUS_STRINGS) {
+            console.log(`Code: ${code} - ${HTTP_STATUS_STRINGS[code as keyof typeof HTTP_STATUS_STRINGS]}`);
             return HTTP_STATUS_STRINGS[code as keyof typeof HTTP_STATUS_STRINGS];
         }
         return 'Unknown Status';

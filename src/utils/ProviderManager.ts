@@ -1,5 +1,6 @@
 import { ethers, Provider } from "ethers";
 import fs from 'fs';
+import path from 'path';
 import { SupportedNetworks } from "../types/constants";
 
 export class ProviderManager {
@@ -9,11 +10,12 @@ export class ProviderManager {
     constructor() {
         this.loadConfig();
         this.provider = this.getProvider(this.config.masterNetwork);
+        // console.log(await this.provider.getBlockNumber());
     }
 
     private loadConfig() {
         try {
-            const configPath = require.resolve('../wttp.config.json');
+            const configPath = path.join(__dirname, '../wttp.config.json');
             this.config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         } catch (error) {
             if (error instanceof Error) {
@@ -28,7 +30,7 @@ export class ProviderManager {
 
     public getRpcUrl(network: SupportedNetworks) {
         // TODO: Create a RPC URL manager to rank the RPC URLs so the best one is always at index 0
-        const rpcUrl = this.config[network].rpcUrls?.[0];
+        const rpcUrl = this.config.networks[network].rpcUrls?.[0];
         if (!rpcUrl) {
             throw new Error(`No RPC URL found for network ${network}`);
         }
@@ -36,7 +38,7 @@ export class ProviderManager {
     }
 
     public getProvider(network: SupportedNetworks) {
-        this.provider = new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config[network].chainId);
+        this.provider = new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config.networks[network].chainId);
         return this.provider;
     }
 }

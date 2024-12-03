@@ -1,9 +1,34 @@
 import { ethers } from "hardhat";
 import hre from "hardhat";
-import { WTTP_CONTRACT_ADDRESS, DATAPOINT_REGISTRY_ADDRESS, DEFAULT_HEADER } from "../src/types/constants";
+import { DEFAULT_HEADER } from "../src/types/constants";
 import { WTTPHandler } from "../src/WTTPHandler";
+import fs from 'fs';
+import path from 'path';
+
+function getDeploymentAddress(contractName: string): string {
+    const configPath = path.join(__dirname, '../wttp.config.json');
+
+    console.log(configPath);
+    
+    if (!fs.existsSync(configPath)) {
+        throw new Error('wttp.config.json not found');
+    }
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const networkName = hre.network.name;
+    
+    if (!config.networks?.[networkName]?.contracts?.[contractName + 'Address']) {
+        throw new Error(`Address not found for contract ${contractName} on network ${networkName}`);
+    }
+
+    return config.networks[networkName].contracts[contractName + 'Address'];
+} 
 
 async function main() {
+    // Load contract addresses from deployment
+    const DATAPOINT_REGISTRY_ADDRESS = getDeploymentAddress('DataPointRegistry');
+    const WTTP_CONTRACT_ADDRESS = getDeploymentAddress('WTTP');
+
     // Get multiple signers, skip the first one (deployer)
     const signers = await ethers.getSigners();
     const [_, creator1, creator2, creator3] = signers;

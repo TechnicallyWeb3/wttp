@@ -101,7 +101,7 @@ class ContractManager {
         contractName: 'dataPointStorage' | 'dataPointRegistry' | 'wttpPermissions' | 'wttpStorage' | 'wttpSite' | 'wttp'
     ): string | undefined {
         const networkName = network.name;
-        return this.config[networkName]?.contracts?.[`${contractName}Address`];
+        return this.config.networks[networkName]?.contracts?.[`${contractName}Address`];
     }
 }
 

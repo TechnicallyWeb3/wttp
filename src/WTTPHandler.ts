@@ -12,6 +12,7 @@ export class WTTPHandler {
     public defaultSigner: Signer;
     public masterNetwork: string;
     public config: any;
+    public provider: ethers.Provider;
     private urlParser: URLParser;
     private requestBuilder: RequestBuilder;
     private responseBuilder: ResponseBuilder;
@@ -35,13 +36,19 @@ export class WTTPHandler {
     constructor(
         wttpAddress?: string | Addressable,
         signer?: Signer,
-        networkName?: string
+        networkName?: SupportedNetworks
     ) {
+
+        this.urlParser = new URLParser();
+        this.requestBuilder = new RequestBuilder();
+        this.responseBuilder = new ResponseBuilder();
+        this.ensResolver = new ENSResolver();
+        this.providerManager = new ProviderManager();
 
         this.config = JSON.parse(fs.readFileSync(path.join(__dirname, 'wttp.config.json'), 'utf8'));
         
         if (!networkName) {
-            networkName = MASTER_NETWORK as string;
+            networkName = MASTER_NETWORK as SupportedNetworks;
         }
 
         if (!wttpAddress) {
@@ -49,20 +56,18 @@ export class WTTPHandler {
         }
 
         if (!signer) {
-            signer = ethers.Wallet.createRandom();
-            // console.log(`Using random signer: ${signer.address}`);
+            const provider = this.providerManager.getProvider(networkName);
+            signer = ethers.Wallet.createRandom().connect(provider);
+        } else if (!signer.provider) {
+            const provider = this.providerManager.getProvider(networkName);
+            signer = signer.connect(provider);
         }
 
-        this.urlParser = new URLParser();
-        this.requestBuilder = new RequestBuilder();
-        this.responseBuilder = new ResponseBuilder();
-        this.ensResolver = new ENSResolver();
-        this.providerManager = new ProviderManager();
         this.defaultSigner = signer;
         this.masterNetwork = networkName;
         this.wttpAddress = wttpAddress;
         this.wttp = WTTP__factory.connect(String(wttpAddress), signer);
-
+        this.provider = this.providerManager.getProvider(networkName);
         // // Initialize WTTP synchronously instead of asynchronously
         // try {
         //     // Remove network switching for testing
@@ -91,6 +96,10 @@ export class WTTPHandler {
         body?: string | Uint8Array;
         signer?: Signer;
     } = {}): Promise<Response> {
+
+        // const provider = this.providerManager.getProvider('seth');
+        // console.log(await provider.getBlockNumber());
+
         const { host, path, networkName } = this.parseURL(url);
         // Convert string method to Method enum if needed
         let convertedMethod;
@@ -252,9 +261,9 @@ export class WTTPHandler {
         const configPath = path.join(__dirname, 'wttp.config.json');
         try {
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            const networkConfig = config[networkName];
-            if (networkConfig && networkConfig.wttpAddress) {
-                return networkConfig.wttpAddress;
+            const networkConfig = config.networks[networkName];
+            if (networkConfig && networkConfig.contracts.wttpAddress) {
+                return networkConfig.contracts.wttpAddress;
             } else {
                 throw new Error(`WTTP address not found for network: ${networkName}`);
             }
