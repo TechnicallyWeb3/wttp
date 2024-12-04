@@ -73,7 +73,8 @@ enum Method {
     CONNECT,
     TRACE,
     LOCATE,
-    DEFINE
+    DEFINE,
+    PATH
 }
 
 function methodsToMask(Method[] memory methods) pure returns (uint16) {
@@ -147,10 +148,12 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         _;
     }
 
-    mapping(string => bytes32) private headerPaths;
-    mapping(bytes32 => HeaderInfo) private headers;
-    mapping(string => ResourceMetadata) private resourceMetadata;
-    mapping(string => bytes32[]) private resources;
+    mapping(string path=> bytes32) private headerPaths;
+    mapping(bytes32 header => HeaderInfo) private headers;
+    mapping(string path => ResourceMetadata) private resourceMetadata;
+    mapping(string path => bytes32[]) private resources;
+    mapping(string path => string[]) private directories;
+    mapping(string path => mapping(bytes2 language => mapping(bytes2 charset => string variation))) private variations;
 
     modifier pathModifiable(string memory _path) {
         require(
@@ -228,6 +231,18 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         string memory _path
     ) internal view returns (ResourceMetadata memory) {
         return resourceMetadata[_path];
+    }
+
+    function _readVariation(
+        string memory _path,
+        bytes2 _language,
+        bytes2 _charset
+    ) internal view returns (string memory) {
+        string memory variation = variations[_path][_language][_charset];
+        if (bytes(variation).length == 0) {
+            return directories[_path][0];
+        }
+        return variation;
     }
 
     // Internal CRUD functions
@@ -344,11 +359,23 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         emit ResourceDeleted(_path);
     }
 
+    // input path such as /about with a en-US language and utf-8 charset would resolve to /about/index.en-US.html
+    function _createVariation(
+        string memory _path,
+        bytes2 _language,
+        bytes2 _charset,
+        string memory _variation
+    ) internal {
+        variations[_path][_language][_charset] = _variation;
+        emit VariationCreated(_path, _language, _charset, _variation);
+    }
+
     // Events
     event HeaderUpdated(string path, HeaderInfo header, Redirect redirect);
     event ResourceCreated(string path, uint256 size, address publisher);
     event ResourceUpdated(string path, uint256 chunk, address publisher);
     event ResourceDeleted(string path);
+    event VariationCreated(string path, bytes2 language, bytes2 charset, string variation);
 }
 
 struct RequestLine {
@@ -474,6 +501,29 @@ abstract contract WTTPSite is WTTPStorage {
         } else {
             locateResponse.dataPoints = _readLocation(_path);
         }
+    }
+
+    function PATH(
+        RequestLine memory requestLine,
+        bytes2 _language,
+        bytes2 _charset
+    ) public view returns (HEADResponse memory pathResponse) {
+        string memory _path = requestLine.path;
+        if (!_methodAllowed(_path, Method.PATH)) {
+            pathResponse.responseLine = ResponseLine({
+                protocol: requestLine.protocol,
+                code: 405
+            });
+        } else {
+            pathResponse.headerInfo = _readHeader(_path);
+            pathResponse.headerInfo.redirect.code = 301;
+            pathResponse.headerInfo.redirect.location = _readVariation(_path, _language, _charset);
+            pathResponse.metadata = _readMetadata(_path);
+            bytes32[] memory _dataPoints = _readLocation(_path);
+            pathResponse.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
+            pathResponse.etag = keccak256(abi.encode(_dataPoints));
+        }
+        return pathResponse;
     }
 
     function DEFINE(

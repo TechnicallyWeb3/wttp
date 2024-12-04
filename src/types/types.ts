@@ -1,5 +1,6 @@
 import { BytesLike, Signer } from "ethers";
 import { LOCATEResponseStructOutput } from "../../typechain-types/contracts/WebContract.sol/WTTPSite";
+import { SupportedNetworks } from "./constants";
 
 export enum Method {
     GET = 'GET',
@@ -108,13 +109,13 @@ export interface RequestOptions {
     chunkIndex?: number;
     header?: HeaderInfo;
     signer?: Signer;
-    networkName?: string;
+    networkName?: SupportedNetworks;
 }
 
 export interface ParsedURL {
     host: string;
     path: string;
     queryParams?: string[];
-    networkName?: string;
+    networkName?: SupportedNetworks;
 }
 

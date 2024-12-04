@@ -1,4 +1,4 @@
-import { SUPPORTED_PROTOCOLS } from '../types/constants';
+import { SUPPORTED_PROTOCOLS, SupportedNetworks } from '../types/constants';
 import { ParsedURL } from '../types/types';
 
 export class URLParser {
@@ -24,11 +24,11 @@ export class URLParser {
         const queryParams = urlParts[1] ? urlParts[1].split('&') : [];
         const [hostParts, ...pathParts] = urlParts[0].split('/');
         let host = hostParts;
-        let networkName: string | undefined = undefined;
+        let networkName: SupportedNetworks | undefined = undefined;
 
         if (hostParts.includes(':')) {
             const splitHost = hostParts.split(':');
-            networkName = splitHost[1];
+            networkName = splitHost[1] as SupportedNetworks;
             host = splitHost[0];
         }
         const path = pathParts.length > 0 ? '/' + pathParts.join('/') : '/';

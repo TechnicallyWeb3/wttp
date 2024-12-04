@@ -10,7 +10,7 @@ export class WTTPHandler {
     public wttpAddress: string | Addressable;
     private wttp: WTTP;
     public defaultSigner: Signer;
-    public masterNetwork: string;
+    public masterNetwork: SupportedNetworks;
     public config: any;
     public provider: ethers.Provider;
     private urlParser: URLParser;
@@ -25,10 +25,10 @@ export class WTTPHandler {
     }
 
     public setSigner(signer: Signer) {
-        this.defaultSigner = signer;
+        this.defaultSigner = signer.connect(this.provider);
     }
 
-    public setNetwork(networkName: string) {
+    public setNetwork(networkName: SupportedNetworks) {
         this.masterNetwork = networkName;
         this.switchNetwork(networkName);
     }
@@ -140,7 +140,7 @@ export class WTTPHandler {
 
         if (networkName && networkName !== this.masterNetwork) {
             // Switch networks if specified
-            await this.switchNetwork(networkName);
+            await this.switchNetwork(networkName as SupportedNetworks);
         }
 
         const response = this.executeRequest(await request);
@@ -225,7 +225,7 @@ export class WTTPHandler {
         return request.data instanceof Uint8Array ? ethers.toUtf8String(request.data) : request.data;
     }
 
-    public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: string) {
+    public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: SupportedNetworks) {
 
         if (!networkName) {
             networkName = this.masterNetwork;
@@ -253,8 +253,10 @@ export class WTTPHandler {
         return wttp;
     }
 
-    private async switchNetwork(networkName: string) {
-        throw new Error(`Function not implemented. switchNetwork(${networkName})`);
+    private async switchNetwork(networkName: SupportedNetworks) {
+        const provider = this.providerManager.getProvider(networkName);
+        this.defaultSigner = this.defaultSigner.connect(provider);
+        this.wttp = this.wttp.connect(this.defaultSigner);
     }
 
     private getWTTPAddress(networkName: string): string {
@@ -421,7 +423,7 @@ export class WTTPHandler {
                 const site = await this.loadSite(request.host);
                 const royalty = await this.loadRoyalty(request);
 
-                const tx = await site.connect(request.signer || this.defaultSigner).PUT(
+                const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PUT(
                     request.requestLine,
                     request.mimeType,
                     request.charset,
@@ -443,7 +445,7 @@ export class WTTPHandler {
             case Method.PATCH: {
                 const site = await this.loadSite(request.host);
                 const royalty = await this.loadRoyalty(request);
-                const tx = await site.connect(request.signer || this.defaultSigner).PATCH(
+                const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PATCH(
                     request.requestLine,
                     request.data,
                     request.chunk,
@@ -458,7 +460,7 @@ export class WTTPHandler {
 
             case Method.DEFINE: {
                 const site = await this.loadSite(request.host);
-                const tx = await site.connect(request.signer || this.defaultSigner).DEFINE(
+                const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).DEFINE(
                     request.host,
                     request.requestLine,
                     request.header
@@ -471,7 +473,7 @@ export class WTTPHandler {
 
             case Method.DELETE: {
                 const site = await this.loadSite(request.host);
-                const tx = await site.connect(request.signer || this.defaultSigner).DELETE(
+                const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).DELETE(
                     request.host,
                     request.requestLine
                 );

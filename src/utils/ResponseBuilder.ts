@@ -121,7 +121,7 @@ export class ResponseBuilder {
     private getStatusText(code: number): string {
         // Check if the code exists in our status codes
         if (code in HTTP_STATUS_STRINGS) {
-            console.log(`Code: ${code} - ${HTTP_STATUS_STRINGS[code as keyof typeof HTTP_STATUS_STRINGS]}`);
+            // console.log(`Code: ${code} - ${HTTP_STATUS_STRINGS[code as keyof typeof HTTP_STATUS_STRINGS]}`);
             return HTTP_STATUS_STRINGS[code as keyof typeof HTTP_STATUS_STRINGS];
         }
         return 'Unknown Status';
