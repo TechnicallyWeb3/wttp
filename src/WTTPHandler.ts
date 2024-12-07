@@ -56,7 +56,7 @@ export class WTTPHandler {
         }
 
         const provider = this.providerManager.getProvider(networkName);
-        
+
         if (!signer) {
             signer = ethers.Wallet.createRandom().connect(provider);
         } else if (!signer.provider) {
@@ -445,9 +445,9 @@ export class WTTPHandler {
             case Method.PATCH: {
                 const site = await this.loadSite(request.host);
                 const royalty = await this.loadRoyalty(request);
-                console.log(`Request Signer: ${request.signer.connect(this.provider)}`);
-                console.log(`Chunk: ${request.chunk}`);
-                console.log(`Publisher: ${request.publisher}`);
+                // console.log(`Request Signer: ${request.signer.connect(this.provider)}`);
+                // console.log(`Chunk: ${request.chunk}`);
+                // console.log(`Publisher: ${request.publisher}`);
                 const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PATCH(
                     request.requestLine,
                     request.data,
