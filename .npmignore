@@ -2,7 +2,6 @@
 src/
 /contracts/
 lib/
-/examples/
 
 # Tests
 test/
