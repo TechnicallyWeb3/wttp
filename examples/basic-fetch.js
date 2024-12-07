@@ -3,14 +3,13 @@ const { Wallet } = require('ethers');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const site = "0xF84468fc473c0FFBA6cf45b24Bd5e126FEB65F3f";
+const site = "0x7c1EecB4a6AB71B6C6E101FF811456fde4b657e3";
 const signer = new Wallet(process.env.PRIVATE_KEY); // use private key from .env
 
 async function main() {
 
     try {
         
-
         // write to site using PUT
         const response = await wttp.fetch(`wttp://${site}/index.html`, {
             method: "PUT",
