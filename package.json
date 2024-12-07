@@ -1,10 +1,10 @@
 {
   "name": "wttp-handler",
-  "version": "2.0.23",
+  "version": "2.0.26",
   "scripts": {
     "example": "node examples/basic-fetch.js",
     "test": "npx hardhat test",
-    "postbuild": "copyfiles \"contracts/**/*\" dist && copyfiles \"wttp.config.json\" dist/src",
+    "postbuild": "copyfiles \"contracts/**/*\" dist && copyfiles \"src/wttp.config.json\" dist/src",
     "build": "tsc",
     "prepack": "npm run postbuild"
   },

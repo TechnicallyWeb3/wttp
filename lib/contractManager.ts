@@ -32,7 +32,7 @@ class ContractManager {
 
     private loadConfig(): Config {
         try {
-            this.config = JSON.parse(fs.readFileSync(path.join(__dirname, '../wttp.config.json'), 'utf8'));
+            this.config = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/wttp.config.json'), 'utf8'));
         } catch {
             this.config = {
                 masterNetwork: network.name as SupportedNetworks || 'localhost',
@@ -45,7 +45,7 @@ class ContractManager {
 
     private saveConfig() {
         fs.writeFileSync(
-            path.join(__dirname, '../wttp.config.json'),
+            path.join(__dirname, '../src/wttp.config.json'),
             JSON.stringify(this.config, null, 2)
         );
     }
