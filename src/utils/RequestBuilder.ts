@@ -7,7 +7,26 @@ import {
     RequestOptions 
 } from '../types/types';
 
+/**
+ * Builds WTTP request objects for different HTTP methods
+ * @remarks
+ * Handles request formatting and validation for all supported WTTP methods
+ */
 export class RequestBuilder {
+    /**
+     * Builds a formatted request object based on provided options
+     * @param options - Request options including method, path, and data
+     * @returns Formatted request object specific to the method
+     * 
+     * @example
+     * ```typescript
+     * const request = await builder.build({
+     *   method: Method.GET,
+     *   path: '/index.html',
+     *   host: '0x...'
+     * });
+     * ```
+     */
     async build(options: RequestOptions) {
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",

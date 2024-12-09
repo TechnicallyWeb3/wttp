@@ -4,41 +4,69 @@ pragma solidity ^0.8.20;
 import "./WebStorage.sol";
 import "./WebContract.sol";
 
+/// @title WTTP (Web3 Transfer Protocol)
+/// @notice Main interface for interacting with decentralized web resources on the blockchain
+/// @dev Implements HTTP-like methods for retrieving and managing web content from WTTPSite contracts
+
+/// @notice Header information for WTTP requests
+/// @dev Used to pass accept types and conditional request parameters
 struct RequestHeader {
+    /// @notice Array of accepted MIME types in bytes2 format
     bytes2[] accept;
+    /// @notice Array of accepted character sets in bytes2 format
     bytes2[] acceptCharset;
+    /// @notice Array of accepted languages in bytes4 format
     bytes4[] acceptLanguage;
+    /// @notice Timestamp for conditional requests based on modification date
     uint256 ifModifiedSince;
+    /// @notice ETag for conditional requests based on content hash
     bytes32 ifNoneMatch;
 }
 
+/// @notice Parameters for GET requests
+/// @dev Used to specify the target host and range of data to retrieve
 struct GETRequest {
+    /// @notice Address of the WTTPSite contract hosting the resource
     address host;
+    /// @notice Starting chunk index for range requests
     uint32 rangeStart;
+    /// @notice Ending chunk index for range requests (0 means until end)
     uint32 rangeEnd;
 }
 
+/// @notice Response structure for GET requests
+/// @dev Contains both metadata and actual content
 struct GETResponse {
+    /// @notice Metadata and header information about the resource
     HEADResponse head;
+    /// @notice Actual content data of the resource
     bytes body;
 }
 
+/// @title WTTP Protocol Implementation
+/// @notice Chain-wide contract for accessing and managing web resources
+/// @dev Acts as a gateway to individual WTTPSite contracts
 contract WTTP {
 
-
+    /// @notice Checks if a specific method is allowed for a resource
+    /// @dev Uses bitwise operations to check method permissions
+    /// @param _methods Bitmask of allowed methods
+    /// @param _method Method to check
+    /// @return bool True if method is allowed
     function _methodAllowed(
         uint16 _methods,
         Method _method
     ) internal pure returns (bool) {
-        uint16 methodBit = uint16(1 << uint8(_method)); // Create a bitmask for the method
-
-        if (_methods & methodBit != 0) {
-            return true;
-        }
-
-        return false;
+        uint16 methodBit = uint16(1 << uint8(_method));
+        return (_methods & methodBit != 0);
     }
 
+    /// @notice Retrieves a resource from a WTTPSite
+    /// @dev Supports conditional requests and range requests
+    /// @param _requestLine Basic request information including path and protocol
+    /// @param _requestHeader Request headers including conditional request parameters
+    /// @param _getRequest Target host and range parameters
+    /// @return getResponse Response containing metadata and content
     function GET(
         RequestLine memory _requestLine,
         RequestHeader memory _requestHeader,
@@ -103,6 +131,11 @@ contract WTTP {
         }
     }
 
+    /// @notice Retrieves resource metadata without content
+    /// @dev Equivalent to HTTP HEAD method
+    /// @param _host Address of the WTTPSite contract
+    /// @param _requestLine Basic request information
+    /// @return headResponse Response containing only metadata
     function HEAD(
         address _host,
         RequestLine memory _requestLine
@@ -110,6 +143,11 @@ contract WTTP {
         return WTTPSite(_host).HEAD(_requestLine);
     }
 
+    /// @notice Retrieves resource location information
+    /// @dev Used to get DataPoint addresses for a resource
+    /// @param _host Address of the WTTPSite contract
+    /// @param _requestLine Basic request information
+    /// @return locateResponse Response containing resource locations
     function LOCATE(
         address _host,
         RequestLine memory _requestLine
@@ -117,6 +155,11 @@ contract WTTP {
         return WTTPSite(_host).LOCATE(_requestLine);
     }
 
+    /// @notice Retrieves allowed methods and other options
+    /// @dev Equivalent to HTTP OPTIONS method
+    /// @param _host Address of the WTTPSite contract
+    /// @param _requestLine Basic request information
+    /// @return optionsResponse Response containing allowed methods
     function OPTIONS(
         address _host,
         RequestLine memory _requestLine
@@ -134,6 +177,11 @@ contract WTTP {
         return optionsResponse;
     }
 
+    /// @notice Returns request information for debugging
+    /// @dev Equivalent to HTTP TRACE method
+    /// @param _host Address of the WTTPSite contract
+    /// @param _requestLine Basic request information
+    /// @return traceResponse Response containing request information
     function TRACE(
         address _host,
         RequestLine memory _requestLine

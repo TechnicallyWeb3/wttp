@@ -15,7 +15,6 @@ test/
 .prettierrc
 tsconfig.json
 hardhat.config.ts
-/wttp.config.json
 
 # Development files
 coverage/

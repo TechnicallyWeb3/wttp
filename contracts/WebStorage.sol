@@ -1,22 +1,45 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.20;
 
+/// @title Data Point Structure Components
+/// @notice Defines the basic structure elements of a data point
+/// @dev Uses bytes2 for efficient storage of type information
 struct DataPointStructure {
+    /// @notice MIME type identifier for the data
+    /// @dev Stored as bytes2 for gas efficiency
     bytes2 mimeType;
+    /// @notice Character encoding of the data
     bytes2 charset;
-    bytes2 location;
-}
-struct DataPoint {
-    DataPointStructure structure;
-    bytes data;
-}
-struct DataPointInfo {
-    uint256 size;
-    bytes2 mimeType;
-    bytes2 charset;
+    /// @notice Storage location identifier
     bytes2 location;
 }
 
+/// @title Data Point Container
+/// @notice Main structure for storing data with its metadata
+struct DataPoint {
+    /// @notice Structural metadata about the data point
+    DataPointStructure structure;
+    /// @notice The actual data content
+    bytes data;
+}
+
+/// @title Data Point Information
+/// @notice Read-only information about a stored data point
+struct DataPointInfo {
+    /// @notice Size of the data in bytes
+    uint256 size;
+    /// @notice MIME type identifier
+    bytes2 mimeType;
+    /// @notice Character encoding
+    bytes2 charset;
+    /// @notice Storage location
+    bytes2 location;
+}
+
+/// @notice Calculates a unique address for a data point
+/// @dev Uses keccak256 hash of concatenated structural information and data
+/// @param _dataPoint The data point to calculate the address for
+/// @return bytes32 The calculated address
 function getDataPointAddress(
     DataPoint memory _dataPoint
 ) pure returns (bytes32) {
@@ -31,10 +54,17 @@ function getDataPointAddress(
         );
 }
 
+/// @title Data Point Storage Contract
+/// @notice Provides core storage functionality for data points
+/// @dev Implements collision handling and basic CRUD operations
 contract DataPointStorage {
 
     mapping(bytes32 => DataPoint) private dataPoints;
 
+    /// @notice Calculates the storage address for a data point with collision handling
+    /// @dev Iteratively generates new addresses if collisions are detected
+    /// @param _dataPoint The data point to calculate address for
+    /// @return bytes32 The final calculated storage address
     function calculateAddress(
         DataPoint memory _dataPoint
     ) public view returns (bytes32) {
@@ -48,6 +78,10 @@ contract DataPointStorage {
         return dataPointAddress;
     }
 
+    /// @notice Stores a new data point
+    /// @dev Validates input and handles storage with collision avoidance
+    /// @param _dataPoint The data point to store
+    /// @return dataPointAddress The address where the data point is stored
     function writeDataPoint(
         DataPoint memory _dataPoint
     ) public returns (bytes32 dataPointAddress) {
@@ -68,12 +102,18 @@ contract DataPointStorage {
         }
     }
 
+    /// @notice Retrieves a data point by its address
+    /// @param _dataPointAddress The address of the data point to retrieve
+    /// @return The requested data point
     function readDataPoint(
         bytes32 _dataPointAddress
     ) public view returns (DataPoint memory) {
         return dataPoints[_dataPointAddress];
     }
 
+    /// @notice Gets metadata information about a stored data point
+    /// @param _dataPointAddress The address of the data point
+    /// @return DataPointInfo structure containing size and metadata
     function dataPointInfo(
         bytes32 _dataPointAddress
     ) public view returns (DataPointInfo memory) {
@@ -89,8 +129,13 @@ contract DataPointStorage {
 
 }
 
+/// @title Data Point Registry Contract
+/// @notice Manages data point publishing and royalty payments
+/// @dev Extends storage functionality with economic incentives
 contract DataPointRegistry {
     
+    /// @notice Structure for tracking royalty information
+    /// @dev Stores gas usage and publisher address for royalty calculations
     struct DataPointRoyalty {
         uint256 gasUsed;
         address publisher;
@@ -102,48 +147,74 @@ contract DataPointRegistry {
     DataPointStorage public DPS_;
     address internal tw3;
 
+    /// @notice Contract constructor
+    /// @param _dps Address of the DataPointStorage contract
+    /// @param _tw3 Address for platform fee collection
     constructor(address _dps, address _tw3) {
         _setFileSystem(_dps);
         tw3 = _tw3;
     }
 
+    /// @notice Sets the file system contract address
+    /// @dev Internal function for updating storage contract reference
+    /// @param _dps Address of the new storage contract
     function _setFileSystem(address _dps) internal virtual {
         DPS_ = DataPointStorage(_dps);
     }
 
+    /// @notice Retrieves the current file system instance
+    /// @return The current DataPointStorage contract
     function _useFileSystem(
         DataPointStorage _dps
     ) internal view virtual returns (DataPointStorage) {
         return _dps;
     }
 
+    /// @notice Gets the royalty recipient for a data point
+    /// @param _dataPointAddress The address of the data point
+    /// @return The address of the royalty recipient
     function _getRoyaltyAddress(
         bytes32 _dataPointAddress
     ) internal view virtual returns (address) {
         return dataPointRoyalty[_dataPointAddress].publisher;
     }
 
+    /// @notice Defines the gas rate for royalty calculations
+    /// @return The gas rate in wei (0.01 gwei)
     function _royaltyGasRate() internal pure virtual returns (uint256) {
         return 10000000; // 0.01 gwei
     }
 
+    /// @notice Calculates the royalty amount for a data point
+    /// @param _dataPointAddress The address of the data point
+    /// @return The calculated royalty amount in wei
     function getRoyalty(
         bytes32 _dataPointAddress
     ) public view virtual returns (uint256) {
         return dataPointRoyalty[_dataPointAddress].gasUsed * _royaltyGasRate();
     }
 
+    /// @notice Allows publishers to withdraw their earned royalties
+    /// @param _amount The amount to withdraw
+    /// @param _withdrawTo The address to send the royalties to
     function collectRoyalties(uint256 _amount, address _withdrawTo) public {
         require(_amount <= publisherBalance[msg.sender], "DPR: Insufficient balance");
         publisherBalance[msg.sender] -= _amount;
         payable(_withdrawTo).transfer(_amount);
     }
 
+    /// @notice Checks the royalty balance of a publisher
+    /// @param _publisher The address of the publisher
+    /// @return The current balance in wei
     function royaltyBalance(address _publisher) public view returns (uint256) {
         return publisherBalance[_publisher];
     }
 
-    // using publisher address(0) to waive royalties
+    /// @notice Writes a new data point and handles royalty logic
+    /// @dev Use address(0) as publisher to waive royalties
+    /// @param _dataPoint The data point to write
+    /// @param _publisher The address of the publisher (or address(0) to waive royalties)
+    /// @return dataPointAddress The address where the data point is stored
     function writeDataPoint(
         DataPoint memory _dataPoint,
         address _publisher

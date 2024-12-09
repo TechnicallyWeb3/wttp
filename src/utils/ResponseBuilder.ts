@@ -2,7 +2,17 @@ import { HEADResponse, Method } from '../types/types';
 import { HTTP_STATUS_STRINGS } from '../types/constants';
 import { toUtf8String } from 'ethers';
 
+/**
+ * Builds standardized Response objects from WTTP responses
+ * @remarks
+ * Handles response formatting, header construction, and status code mapping
+ */
 export class ResponseBuilder {
+    /**
+     * Constructs Headers object from WTTP head response
+     * @param headResponse - Head response from WTTP contract
+     * @returns Headers object with all applicable HTTP headers
+     */
     private buildHeaders(headResponse: HEADResponse): Headers {
         const headers = new Headers();
 
@@ -77,6 +87,12 @@ export class ResponseBuilder {
         return headers;
     }
 
+    /**
+     * Builds a web standard Response object from WTTP response
+     * @param request - Original request object
+     * @param rawResponse - Raw response from WTTP contract
+     * @returns Standard Response object
+     */
     build(request: any, rawResponse: any): Response {
         const { head } = rawResponse;
         let body = rawResponse.body;
@@ -118,6 +134,11 @@ export class ResponseBuilder {
         );
     }
 
+    /**
+     * Gets HTTP status text for status code
+     * @param code - HTTP status code
+     * @returns Status text string
+     */
     private getStatusText(code: number): string {
         // Check if the code exists in our status codes
         if (code in HTTP_STATUS_STRINGS) {

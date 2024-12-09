@@ -6,33 +6,68 @@ import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser, ProviderManage
 import fs from 'fs';
 import path from 'path';
 
+/**
+ * Main handler class for interacting with the WTTP protocol
+ * @remarks
+ * This class provides a fetch-like interface for interacting with web resources stored on the blockchain
+ * through the WTTP (Web3 Transfer Protocol) contract.
+ */
 export class WTTPHandler {
+    /** Address of the main WTTP contract */
     public wttpAddress: string | Addressable;
+    /** Instance of the WTTP contract */
     private wttp: WTTP;
+    /** Default signer for transactions */
     public defaultSigner: Signer;
+    /** Primary network for operations */
     public masterNetwork: SupportedNetworks;
+    /** Configuration settings */
     public config: any;
+    /** Ethereum provider instance */
     public provider: ethers.Provider;
+    /** URL parsing utility */
     private urlParser: URLParser;
+    /** Request building utility */
     private requestBuilder: RequestBuilder;
+    /** Response building utility */
     private responseBuilder: ResponseBuilder;
+    /** ENS resolution utility */
     private ensResolver: ENSResolver;
+    /** Network provider management utility */
     private providerManager: ProviderManager;
 
+    /**
+     * Updates the WTTP contract instance
+     * @param wttpAddress - Address of the WTTP contract
+     */
     public setWTTP(wttpAddress: string | Addressable) {
         this.wttp = WTTP__factory.connect(String(wttpAddress), this.defaultSigner);
         this.wttpAddress = wttpAddress;
     }
 
+    /**
+     * Updates the signer used for transactions
+     * @param signer - New signer to use
+     */
     public setSigner(signer: Signer) {
         this.defaultSigner = signer.connect(this.provider);
     }
 
+    /**
+     * Changes the active network
+     * @param networkName - Name of the network to switch to
+     */
     public setNetwork(networkName: SupportedNetworks) {
         this.masterNetwork = networkName;
         this.switchNetwork(networkName);
     }
 
+    /**
+     * Creates a new WTTPHandler instance
+     * @param wttpAddress - Optional address of the WTTP contract
+     * @param signer - Optional signer for transactions
+     * @param networkName - Optional network to connect to
+     */
     constructor(
         wttpAddress?: string | Addressable,
         signer?: Signer,
@@ -79,6 +114,22 @@ export class WTTPHandler {
         // }
     }
 
+    /**
+     * Fetches a resource from a WTTP site
+     * @param url - URL of the resource to fetch
+     * @param options - Request options similar to the Fetch API
+     * @returns Promise<Response> - Response object similar to the Fetch API
+     * 
+     * @example
+     * ```typescript
+     * const response = await handler.fetch('wttp://site.eth/resource.html', {
+     *   method: 'GET',
+     *   headers: {
+     *     'Accept': 'text/html'
+     *   }
+     * });
+     * ```
+     */
     async fetch(url: string, options: {
         method?: Method | string;
         headers?: {
@@ -153,7 +204,11 @@ export class WTTPHandler {
         return response;
     }
 
-    // Helper methods for parsing headers
+    /**
+     * Parses range headers into start and end values
+     * @param range - Range header string
+     * @returns Object containing start and end values
+     */
     public parseRange(range?: string) {
         if (!range) return { start: 0, end: 0 };
         let match = range.match(/chunks=(\d+)-(\d+)?/);
@@ -164,6 +219,11 @@ export class WTTPHandler {
         };
     }
 
+    /**
+     * Parses MIME type from Content-Type header
+     * @param contentType - Content-Type header string
+     * @returns MIME type bytes2 representation or undefined
+     */
     public parseMimeType(contentType?: string) {
         if (!contentType) return undefined;
         contentType = contentType.includes(';') ? contentType.split(';')[0] : contentType.trim();
@@ -173,6 +233,11 @@ export class WTTPHandler {
         return undefined;
     }
 
+    /**
+     * Parses charset from Content-Type header
+     * @param contentType - Content-Type header string
+     * @returns Charset bytes2 representation or default "0x0000"
+     */
     public parseCharset(contentType?: string) {
         if (!contentType) return "0x0000";
         contentType = contentType.includes(';') ? contentType.split(';')[1].trim() : contentType.trim();
@@ -183,6 +248,11 @@ export class WTTPHandler {
         return "0x0000";
     }
 
+    /**
+     * Parses location from Content-Location header
+     * @param contentLocation - Content-Location header string
+     * @returns Location bytes2 representation or undefined
+     */
     public parseLocation(contentLocation?: string) {
         if (!contentLocation) return undefined;
         if (contentLocation.trim() in LOCATION_STRINGS) {
@@ -191,6 +261,11 @@ export class WTTPHandler {
         return undefined;
     }
 
+    /**
+     * Parses Accept header into array of MIME types
+     * @param accept - Accept header string
+     * @returns Array of accepted MIME type bytes2 representations
+     */
     public parseAccepts(accept?: string) {
         if (!accept) return [];
         return accept.split(',')
@@ -199,6 +274,11 @@ export class WTTPHandler {
             .filter((type): type is typeof MIME_TYPES[keyof typeof MIME_TYPES] => type !== undefined);
     }
 
+    /**
+     * Parses Accept-Charset header into array of charsets
+     * @param acceptCharset - Accept-Charset header string
+     * @returns Array of accepted charset bytes2 representations
+     */
     public parseAcceptsCharset(acceptCharset?: string) {
         if (!acceptCharset) return [];
         return acceptCharset.split(',')
@@ -207,6 +287,11 @@ export class WTTPHandler {
             .filter((type): type is typeof CHARSET_STRINGS[keyof typeof CHARSET_STRINGS] => type !== undefined);
     }
 
+    /**
+     * Parses Accept-Language header into array of languages
+     * @param acceptLanguage - Accept-Language header string
+     * @returns Array of accepted language bytes4 representations
+     */
     public parseAcceptsLanguage(acceptLanguage?: string) {
         if (!acceptLanguage) return [];
         return acceptLanguage.split(',')
@@ -215,16 +300,33 @@ export class WTTPHandler {
             .filter((type): type is typeof LANGUAGE_STRINGS[keyof typeof LANGUAGE_STRINGS] => type !== undefined);
     }
 
+    /**
+     * Parses chunk index from Range header
+     * @param range - Range header string
+     * @returns Chunk index number or undefined
+     */
     public parseChunkIndex(range?: string) {
         if (!range) return undefined;
         const matches = range.match(/^chunks=(\d+)/);
         return matches ? parseInt(matches[1]) : undefined;
     }
 
+    /**
+     * Converts request content to string if needed
+     * @param request - Request object containing data
+     * @returns String representation of content
+     */
     public parseContent(request: any) {
         return request.data instanceof Uint8Array ? ethers.toUtf8String(request.data) : request.data;
     }
 
+    /**
+     * Loads or creates new WTTP contract instance
+     * @param wttpAddress - Optional address of WTTP contract
+     * @param signer - Optional signer for transactions
+     * @param networkName - Optional network to use
+     * @returns Promise<WTTP> - WTTP contract instance
+     */
     public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: SupportedNetworks) {
 
         if (!networkName) {
@@ -253,12 +355,24 @@ export class WTTPHandler {
         return wttp;
     }
 
+    /**
+     * Switches the current network connection
+     * @param networkName - Network to switch to
+     * @private
+     */
     private async switchNetwork(networkName: SupportedNetworks) {
         const provider = this.providerManager.getProvider(networkName);
         this.defaultSigner = this.defaultSigner.connect(provider);
         this.wttp = this.wttp.connect(this.defaultSigner);
     }
 
+    /**
+     * Gets the WTTP contract address for a specific network from config
+     * @param networkName - Network to get address for
+     * @returns Contract address string
+     * @throws Error if address not found in config
+     * @private
+     */
     private getWTTPAddress(networkName: string): string {
         const configPath = path.join(__dirname, 'wttp.config.json');
         try {
@@ -280,6 +394,12 @@ export class WTTPHandler {
         }
     }
 
+    /**
+     * Loads a WTTP site contract instance
+     * @param host - Address of the site contract
+     * @param signer - Optional signer for transactions
+     * @returns Promise<WTTPSite> - Site contract instance
+     */
     public async loadSite(
         host: string,
         signer?: Signer
@@ -288,6 +408,12 @@ export class WTTPHandler {
         return site;
     }
 
+    /**
+     * Calculates the address of a data point based on its content and metadata
+     * @param request - Request containing data and metadata
+     * @returns string - Address of the data point
+     * @throws Error if required fields are missing
+     */
     public calculateDataPointAddress(request: any): string {
         if (!request.data || request.data.length === 0) {
             throw new Error("Data is required to calculate data point address");
@@ -317,6 +443,11 @@ export class WTTPHandler {
         return ethers.keccak256(packed);
     }
 
+    /**
+     * Loads royalty information for a request
+     * @param request - Request to check royalty for
+     * @returns Promise<BigNumber> - Amount of royalty required
+     */
     public async loadRoyalty(request: any) {
         // console.log(`request for ${request.host}:`);
         // console.log(request);
@@ -343,6 +474,11 @@ export class WTTPHandler {
         return royalty;
     }
 
+    /**
+     * Executes a WTTP request
+     * @param request - Prepared request object
+     * @returns Promise<Response> - Response from the WTTP site
+     */
     public async executeRequest(request: any) {
         // console.log(`Executing request:`);
         // console.log(request);
@@ -511,26 +647,53 @@ export class WTTPHandler {
         return rawResponse;
     }
 
+    /**
+     * Builds a WTTP request object
+     * @param request - Request options
+     * @returns Promise of prepared request object
+     */
     public buildRequest(request: RequestOptions) {
         return this.requestBuilder.build(request);
     }
 
+    /**
+     * Builds a Response object from raw WTTP response
+     * @param request - Original request object
+     * @param rawResponse - Raw response from WTTP contract
+     * @returns Response object similar to Fetch API
+     */
     public buildResponse(request: any, rawResponse: any) {
         return this.responseBuilder.build(request, rawResponse);
     }
 
+    /**
+     * Parses WTTP URLs into components
+     * @param url - WTTP URL string
+     * @returns Object containing host, path, and network information
+     */
     public parseURL(url: string) {
         return this.urlParser.parse(url);
     }
 
+    /**
+     * Resolves ENS names to addresses
+     * @param host - ENS name or address
+     * @returns Promise<string> - Resolved address
+     */
     public async resolveHost(host: string) {
         return this.ensResolver.resolve(host);
     }
 
+    /**
+     * Gets provider for specified network
+     * @param networkName - Name of the network
+     * @returns Promise<ethers.Provider> - Network provider
+     */
     public async getProvider(networkName: SupportedNetworks) {
         return this.providerManager.getProvider(networkName);
     }
 }
 
+/** Default instance of WTTPHandler */
 export const wttp = new WTTPHandler();
 

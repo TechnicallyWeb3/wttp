@@ -1,8 +1,25 @@
 import { SUPPORTED_PROTOCOLS, SupportedNetworks } from '../types/constants';
 import { ParsedURL } from '../types/types';
 
+/**
+ * Parses WTTP URLs into components
+ * @remarks
+ * Handles URL parsing for both WTTP and HTTP URLs, extracting host, path, and network information
+ */
 export class URLParser {
 
+    /**
+     * Parses a URL string into its components
+     * @param url - URL string to parse
+     * @returns ParsedURL object containing host, path, query parameters, and network name
+     * @throws Error if URL format is invalid
+     * 
+     * @example
+     * ```typescript
+     * const parsed = parser.parse('wttp://site.eth:mainnet/path');
+     * // Returns: { host: 'site.eth', path: '/path', networkName: 'mainnet' }
+     * ```
+     */
     parse(url: string): ParsedURL {
 
         const supportedRegex = `^(${SUPPORTED_PROTOCOLS.join('|')}):\/\/`;
