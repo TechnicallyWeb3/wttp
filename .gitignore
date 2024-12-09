@@ -26,3 +26,6 @@ dist
 *.tar.gz
 *.tgz
 
+# Docs
+docs/handler/
+docs/solidity/

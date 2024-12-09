@@ -2,6 +2,7 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "hardhat-switch-network";
+import "hardhat-docgen";
 import dotenv from "dotenv";
 import { setBlockGasLimit } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
@@ -68,6 +69,11 @@ const config: HardhatUserConfig = {
     "11155420": sepolia,
     base: base,
     "8453": base
+  },
+  docgen: {
+    path: './docs/solidity',
+    clear: true,
+    runOnCompile: false
   }
 };
 

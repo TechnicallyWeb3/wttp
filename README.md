@@ -2,6 +2,101 @@
 
 WTTP is a blockchain-based protocol that implements HTTP-like functionality for decentralized web resources. It provides a comprehensive system for storing, retrieving, and managing web resources on the blockchain with built-in content addressing and royalty mechanisms.
 
+## Repository Structure
+
+The WTTP protocol is implemented across three main packages:
+
+- **Protocol Implementation**: [technicallyweb3/wttp](https://github.com/technicallyweb3/wttp)
+  - Core protocol implementation
+  - TypeScript handler
+  - Documentation and examples
+
+- **NPM Package**: [wttp-handler](https://www.npmjs.com/package/wttp-handler)
+  - JavaScript/TypeScript client library
+  - Fetch-like API for WTTP interactions
+  - Ready-to-use examples
+
+- **Smart Contracts**: [@tw3/solidity](https://www.npmjs.com/package/@tw3/solidity)
+  - Solidity contract implementations
+  - Base contracts for WTTP sites
+  - Import path: `@tw3/solidity/contracts/wttp/TW3Site.sol`
+
+## Quick Start
+
+### 1. Deploy Your Site Contract
+Using Remix IDE (recommended for beginners) or Hardhat, deploy this contract to Sepolia testnet:
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@tw3/solidity/contracts/wttp/TW3Site.sol";
+
+contract MyFirstSite is TW3Site {
+    constructor(
+        string memory _name, 
+        string memory _description, 
+        string memory _tags
+    ) TW3Site(_name, _description, _tags) {}
+}
+```
+
+### 2. Install WTTP Handler
+```bash
+npm install wttp-handler
+```
+
+### 3. Create Basic Script
+Create a new file `my-site.js`:
+
+```javascript
+const { wttp } = require('wttp-handler');
+const { Wallet } = require('ethers');
+require('dotenv').config();
+
+// Replace with your deployed contract address
+const SITE_ADDRESS = "0x..."; 
+
+// Create a new account for testing and add its private key to .env
+const signer = new Wallet(process.env.PRIVATE_KEY);
+
+async function main() {
+    // Write content
+    const putResponse = await wttp.fetch(`wttp://${SITE_ADDRESS}/index.html`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Location": "datapoint/chunk",
+            "Publisher": signer.address
+        },
+        body: "<html><body>Hello Web3!</body></html>",
+        signer: signer
+    });
+    console.log("PUT Response:", putResponse.status);
+
+    // Read content
+    const getResponse = await wttp.fetch(`wttp://${SITE_ADDRESS}/index.html`);
+    const content = await getResponse.text();
+    console.log("Content:", content);
+}
+
+main().catch(console.error);
+```
+
+### 4. Setup Environment
+Create a `.env` file:
+```bash
+# ⚠️ Create a new account for testing! Don't use your main account
+PRIVATE_KEY=your_private_key_here
+```
+
+### 5. Run Your Script
+```bash
+node my-site.js
+```
+
+> ⚠️ **Security Note**: Always create a new account for testing and never share or commit your private keys.
+
 ## Core Features
 
 ### Resource Management

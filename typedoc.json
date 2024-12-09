@@ -1,0 +1,8 @@
+{
+  "entryPoints": ["src/WTTPHandler.ts"],
+  "out": "docs/handler",
+  "name": "WTTP Handler Documentation",
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "theme": "default"
+}
