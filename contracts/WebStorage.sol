@@ -28,13 +28,10 @@ struct DataPoint {
 struct DataPointInfo {
     /// @notice Size of the data in bytes
     uint256 size;
-    /// @notice MIME type identifier
-    bytes2 mimeType;
-    /// @notice Character encoding
-    bytes2 charset;
-    /// @notice Storage location
-    bytes2 location;
+    /// @notice Structural metadata about the data point
+    DataPointStructure structure;
 }
+
 
 /// @notice Calculates a unique address for a data point
 /// @dev Uses keccak256 hash of concatenated structural information and data
@@ -121,9 +118,7 @@ contract DataPointStorage {
         return
             DataPointInfo(
                 _dataPoint.data.length,
-                _dataPoint.structure.mimeType,
-                _dataPoint.structure.charset,
-                _dataPoint.structure.location
+                _dataPoint.structure
             );
     }
 
