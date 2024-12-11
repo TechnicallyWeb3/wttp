@@ -128,7 +128,7 @@ contract DataPointStorage {
 /// @notice Manages data point publishing and royalty payments
 /// @dev Extends storage functionality with economic incentives
 contract DataPointRegistry {
-    
+
     /// @notice Structure for tracking royalty information
     /// @dev Stores gas usage and publisher address for royalty calculations
     struct DataPointRoyalty {
@@ -136,6 +136,7 @@ contract DataPointRegistry {
         address publisher;
     }
 
+    uint256 public royaltyRate;
     mapping(bytes32 => DataPointRoyalty) private dataPointRoyalty;
     mapping(address => uint256) private publisherBalance;
 
@@ -144,25 +145,12 @@ contract DataPointRegistry {
 
     /// @notice Contract constructor
     /// @param _dps Address of the DataPointStorage contract
-    /// @param _tw3 Address for platform fee collection
-    constructor(address _dps, address _tw3) {
-        _setFileSystem(_dps);
-        tw3 = _tw3;
-    }
-
-    /// @notice Sets the file system contract address
-    /// @dev Internal function for updating storage contract reference
-    /// @param _dps Address of the new storage contract
-    function _setFileSystem(address _dps) internal virtual {
+    /// @param _tw3 Address for platform fee collection 
+    /// @param _royaltyRate Royalty rate in wei (should be 0.1-1% of chain's average gas fees)
+    constructor(address _dps, address _tw3, uint256 _royaltyRate) {
         DPS_ = DataPointStorage(_dps);
-    }
-
-    /// @notice Retrieves the current file system instance
-    /// @return The current DataPointStorage contract
-    function _useFileSystem(
-        DataPointStorage _dps
-    ) internal view virtual returns (DataPointStorage) {
-        return _dps;
+        tw3 = _tw3;
+        royaltyRate = _royaltyRate;
     }
 
     /// @notice Gets the royalty recipient for a data point
@@ -176,8 +164,8 @@ contract DataPointRegistry {
 
     /// @notice Defines the gas rate for royalty calculations
     /// @return The gas rate in wei (0.01 gwei)
-    function _royaltyGasRate() internal pure virtual returns (uint256) {
-        return 10000000; // 0.01 gwei
+    function _royaltyGasRate() internal view virtual returns (uint256) {
+        return royaltyRate;
     }
 
     /// @notice Calculates the royalty amount for a data point
@@ -224,12 +212,14 @@ contract DataPointRegistry {
         if (dataPointInfo.size == 0) {
             // if the publisher is waiving royalties, only write the data point
             if (_publisher == address(0)) {
-                _useFileSystem(DPS_).writeDataPoint(_dataPoint);
+                DPS_.writeDataPoint(_dataPoint);
             } else {
                 // if the publisher is not waiving royalties, calculate the gas used to write the data point
                 uint256 startGas = gasleft();
-                _useFileSystem(DPS_).writeDataPoint(_dataPoint);
-                royalty.gasUsed = startGas - gasleft();
+                DPS_.writeDataPoint(_dataPoint);
+                uint256 gasUsed = startGas - gasleft();
+                // is this good logic? gasRate is in wei, gasUsed is in gas
+                royalty.gasUsed = gasUsed; // < royaltyRate ? gasUsed : royaltyRate;
                 royalty.publisher = _publisher;
             }
         } else {
