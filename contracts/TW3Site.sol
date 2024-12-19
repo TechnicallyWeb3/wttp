@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.20;
 
-import "@tw3/solidity/contracts/wttp/WebContract.sol";
+import "./WebContract.sol";
 
 abstract contract TW3Site is WTTPSite {
 
@@ -9,7 +9,7 @@ abstract contract TW3Site is WTTPSite {
     string public description;
     string public tags;
 
-    address TW3_DPR_ = 0x5d32C19033A602D936221237ACdc6A7e7135D724;
+    address TW3_DPR_ = 0x1634e2E29AD886C3590667D45b2166153d964F79;
 
     constructor (
         string memory _name, 

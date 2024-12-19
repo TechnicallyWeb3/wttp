@@ -7,9 +7,9 @@
         "https://ethereum-sepolia-rpc.publicnode.com"
       ],
       "contracts": {
-        "dataPointStorageAddress": "0xfcb4212Bc1Fa17828C2fc2b4548db24Db8403465",
-        "dataPointRegistryAddress": "0x5d32C19033A602D936221237ACdc6A7e7135D724",
-        "wttpAddress": "0x9FEB4C6a9594095aD32a4101386c077E0138B564"
+        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
+        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
+        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
       }
     },
     "localhost": {
@@ -17,9 +17,42 @@
         "http://localhost:8545"
       ],
       "contracts": {
-        "dataPointStorageAddress": "0x097654191b54113A9708283a54490634DD57880d",
-        "dataPointRegistryAddress": "0xA56D51EdEfd6348634041840eA81E81d1A111092",
-        "wttpAddress": "0x5013f7c21a06CAD8c352142fbeb9579D7948FE13"
+        "dataPointStorageAddress": "0xeEb7EEA742Ba5446f4A64bAc2354E4eA4E53a88A",
+        "dataPointRegistryAddress": "0xDc0C5B0930fc4B3838846EAda467ea77691aD5fB",
+        "wttpAddress": "0x12cB591A9C6CE3ae7ff9280210aF6508F4D6967D"
+      }
+    },
+    "pol": {
+      "chainId": 137,
+      "rpcUrls": [
+        "https://polygon-bor-rpc.publicnode.com"
+      ],
+      "contracts": {
+        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
+        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
+        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
+      }
+    },
+    "eth": {
+      "chainId": 1,
+      "rpcUrls": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "contracts": {
+        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
+        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
+        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
+      }
+    },
+    "base": {
+      "chainId": 8453,
+      "rpcUrls": [
+        "https://base-rpc.publicnode.com"
+      ],
+      "contracts": {
+        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
+        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
+        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
       }
     }
   }

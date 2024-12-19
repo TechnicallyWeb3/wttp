@@ -2,11 +2,13 @@ import { ethers } from "hardhat";
 import { contractManager } from '../lib/contractManager';
 
 async function main() {
-    const [deployer] = await ethers.getSigners();
-    console.log("Deploying contracts with account:", deployer.address);
+    const [, dpsDeployer, dprDeployer, wttpDeployer] = await ethers.getSigners();
+    
+    const DataPointStorage = await ethers.getContractFactory("DataPointStorage");
+    const DataPointRegistry = await ethers.getContractFactory("DataPointRegistry");
+    const WTTP = await ethers.getContractFactory("WTTP");
 
     // Deploy or load DataPointStorage
-    const DataPointStorage = await ethers.getContractFactory("DataPointStorage");
     const existingDPSAddress = contractManager.getContractAddress('dataPointStorage');
     let dataPointStorage;
     
@@ -14,14 +16,14 @@ async function main() {
         console.log("Loading existing DataPointStorage at:", existingDPSAddress);
         dataPointStorage = DataPointStorage.attach(existingDPSAddress);
     } else {
-        dataPointStorage = await DataPointStorage.deploy();
+        const dpsWithSigner = DataPointStorage.connect(dpsDeployer);
+        dataPointStorage = await dpsWithSigner.deploy();
         await dataPointStorage.waitForDeployment();
         console.log("DataPointStorage deployed to:", dataPointStorage.target);
         contractManager.saveContract('dataPointStorage', String(dataPointStorage.target));
     }
 
     // Deploy or load DataPointRegistry
-    const DataPointRegistry = await ethers.getContractFactory("DataPointRegistry");
     const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
     let dataPointRegistry;
     
@@ -29,9 +31,11 @@ async function main() {
         console.log("Loading existing DataPointRegistry at:", existingDPRAddress);
         dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
     } else {
-        dataPointRegistry = await DataPointRegistry.deploy(
+        const dprWithSigner = DataPointRegistry.connect(dprDeployer);
+        dataPointRegistry = await dprWithSigner.deploy(
             dataPointStorage.target,
-            deployer.address
+            "0x352EBC51417C9511ce884547994b3eD6DcD2DbAE",
+            ethers.parseUnits("1", "gwei")
         );
         await dataPointRegistry.waitForDeployment();
         console.log("DataPointRegistry deployed to:", dataPointRegistry.target);
@@ -39,7 +43,6 @@ async function main() {
     }
 
     // Deploy or load WTTP
-    const WTTP = await ethers.getContractFactory("WTTP");
     const existingWTTPAddress = contractManager.getContractAddress('wttp');
     let wttp;
     
@@ -47,30 +50,12 @@ async function main() {
         console.log("Loading existing WTTP at:", existingWTTPAddress);
         wttp = WTTP.attach(existingWTTPAddress);
     } else {
-        wttp = await WTTP.deploy();
+        const wttpWithSigner = WTTP.connect(wttpDeployer);
+        wttp = await wttpWithSigner.deploy();
         await wttp.waitForDeployment();
         console.log("WTTP deployed to:", wttp.target);
         contractManager.saveContract('wttp', String(wttp.target));
     }
-
-    // // After all deployments:
-    // const fs = require('fs');
-    // const path = require('path');
-    
-    // const constantsPath = path.join(__dirname, '../src/types/constants.ts');
-    // const constants = fs.readFileSync(constantsPath, 'utf8');
-    // const updatedConstants = constants
-    //     .replace(
-    //         /export const WTTP_CONTRACT = '.*?'/,
-    //         `export const WTTP_CONTRACT = '${wttp.target}'`
-    //     )
-    //     .replace(
-    //         /export const DATAPOINT_REGISTRY = '.*?'/,
-    //         `export const DATAPOINT_REGISTRY = '${dataPointRegistry.target}'`
-    //     );
-    
-    // fs.writeFileSync(constantsPath, updatedConstants);
-    // console.log('Updated WTTP_CONTRACT and DATAPOINT_REGISTRY in constants file');
 
     return {
         dataPointStorage: dataPointStorage.target,

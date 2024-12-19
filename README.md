@@ -1,4 +1,4 @@
-# WTTP (Web3 Transfer Transport Protocol)
+# WTTP (Web3 Transfer Protocol)
 
 WTTP is a blockchain-based protocol that implements HTTP-like functionality for decentralized web resources. It provides a comprehensive system for storing, retrieving, and managing web resources on the blockchain with built-in content addressing and royalty mechanisms.
 
