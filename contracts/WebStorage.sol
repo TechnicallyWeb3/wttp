@@ -97,6 +97,8 @@ contract DataPointStorage {
         if (dataPoints[dataPointAddress].data.length == 0) {
             dataPoints[dataPointAddress] = _dataPoint;
         }
+
+        emit DataPointWritten(dataPointAddress, _dataPoint);
     }
 
     /// @notice Retrieves a data point by its address
@@ -121,6 +123,7 @@ contract DataPointStorage {
                 _dataPoint.structure
             );
     }
+    event DataPointWritten(bytes32 indexed dataPointAddress, DataPoint dataPoint);
 
 }
 
@@ -184,6 +187,7 @@ contract DataPointRegistry {
         require(_amount <= publisherBalance[msg.sender], "DPR: Insufficient balance");
         publisherBalance[msg.sender] -= _amount;
         payable(_withdrawTo).transfer(_amount);
+        emit RoyaltiesCollected(msg.sender, _amount, _withdrawTo);
     }
 
     /// @notice Checks the royalty balance of a publisher
@@ -222,6 +226,7 @@ contract DataPointRegistry {
                 royalty.gasUsed = gasUsed; // < royaltyRate ? gasUsed : royaltyRate;
                 royalty.publisher = _publisher;
             }
+            emit DataPointRegistered(dataPointAddress, _publisher);
         } else {
             // the data point already exists, so we need to pay the publisher royalties
             if (
@@ -234,7 +239,12 @@ contract DataPointRegistry {
                 );
                 publisherBalance[royalty.publisher] += msg.value - (gasCost / 10);
                 publisherBalance[tw3] += gasCost / 10;
+                emit RoyaltiesPaid(dataPointAddress, royalty.publisher, msg.value);
             }
         }
     }
+
+    event RoyaltiesCollected(address indexed publisher, uint256 amount, address indexed withdrawTo);
+    event RoyaltiesPaid(bytes32 indexed dataPointAddress, address indexed publisher, uint256 amount);
+    event DataPointRegistered(bytes32 indexed dataPointAddress, address indexed publisher);
 }

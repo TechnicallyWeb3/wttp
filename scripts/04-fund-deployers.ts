@@ -21,7 +21,7 @@ async function main() {
     };
 
     const gasPrice = await ethers.provider.getFeeData().then(data => data.gasPrice || 0n);
-    const buffer = 2; // 25% buffer for safety
+    const buffer = 2; // 300% buffer for safety
 
     // Fund deployers if needed
     const deployersToFund = [
@@ -35,11 +35,19 @@ async function main() {
         const balance = await ethers.provider.getBalance(deployer.address);
         const feeData = await ethers.provider.getFeeData();
         const maxFeePerGas = feeData.maxFeePerGas || (feeData.gasPrice || 0n);
-        const requiredFunding = BigInt(gasLimit) * maxFeePerGas * BigInt(Math.ceil(buffer * 100)) / BigInt(100);
+        const requiredFunding = (BigInt(gasLimit) * maxFeePerGas * BigInt(buffer)); 
         
-        console.log(`Deployer ${deployer.address}:`);
-        console.log("Required funding:", ethers.formatEther(requiredFunding));
-        console.log("Current balance:", ethers.formatEther(balance));
+        console.log(`\nDeployer ${deployer.address}:`);
+        console.log("Estimated Gas Limit:", gasLimit.toString());
+        console.log("Current Max Fee Per Gas:", ethers.formatUnits(maxFeePerGas, "gwei"), "gwei");
+        console.log("Buffer multiplier:", buffer);
+        console.log("Calculated required funding:", ethers.formatEther(requiredFunding), "ETH");
+        console.log("Current balance:", ethers.formatEther(balance), "ETH");
+        console.log("Raw values for verification:");
+        console.log("- Gas limit (wei):", gasLimit.toString());
+        console.log("- Max fee per gas (wei):", maxFeePerGas.toString());
+        console.log("- Required funding (wei):", requiredFunding.toString());
+        console.log("- Current balance (wei):", balance.toString());
         
         if (balance < requiredFunding) {
             const fundingNeeded = requiredFunding - balance;
