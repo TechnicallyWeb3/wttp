@@ -587,7 +587,7 @@ export class WTTPHandler {
                 console.log(`Receipt Log 0 Data:`);
                 console.log(receipt?.logs[0] || '0x00');
 
-                const decoded = site.interface.decodeEventLog(receipt?.logs[1] || { topics: [], data: '' });
+                const decoded = site.interface.parseLog(receipt?.logs[1] || { topics: [], data: '' });
                 console.log(`Decoded event:`);
                 console.log(decoded);
                 break;
