@@ -1,6 +1,19 @@
 import { ZeroAddress } from 'ethers';
+import fs from 'fs';
+import path from 'path';
 
-export const MASTER_NETWORK = 'seth';
+// Load master network from config
+let MASTER_NETWORK: string;
+try {
+    const configPath = path.join(__dirname, '../wttp.config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    MASTER_NETWORK = config.masterNetwork || 'fantom'; // Default to 'fantom' if not found
+} catch (error) {
+    MASTER_NETWORK = 'fantom'; // Default fallback
+    console.warn('Could not load master network from config, using default:', MASTER_NETWORK);
+}
+
+export { MASTER_NETWORK };
 
 export type SupportedNetworks = 
     // To add a new network, add it to the end of the list using the following format:
