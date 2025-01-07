@@ -50,8 +50,9 @@ describe("WebContract (WTTP/2.0)", function () {
             });
             
             await dataPointStorage.waitForDeployment();
-            contractManager.saveContract('dataPointStorage', await dataPointStorage.getAddress());
-            console.log("DataPointStorage deployed at:", await dataPointStorage.getAddress());
+            const address = await dataPointStorage.getAddress();
+            contractManager.saveContract('dataPointStorage', address);
+            console.log("DataPointStorage deployed at:", address);
         }
 
         // Deploy or load DataPointRegistry

@@ -7,9 +7,10 @@ let MASTER_NETWORK: string;
 try {
     const configPath = path.join(__dirname, '../wttp.config.json');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    MASTER_NETWORK = config.masterNetwork || 'fantom'; // Default to 'fantom' if not found
+    MASTER_NETWORK = config.masterNetwork || 'polygon'; // Default to 'fantom' if not found
+    console.log('MASTER_NETWORK:', MASTER_NETWORK);
 } catch (error) {
-    MASTER_NETWORK = 'fantom'; // Default fallback
+    MASTER_NETWORK = 'polygon'; // Default fallback
     console.warn('Could not load master network from config, using default:', MASTER_NETWORK);
 }
 
@@ -24,6 +25,21 @@ export type SupportedNetworks =
     'ethereum' | '1' | 'eth' |
     'base' | '8453' | 'beth' |
     'polygon' | '137' | 'pol';
+
+export const NETWORK_ALIASES = {
+    '1337': 'hardhat',
+    'hre': 'hardhat',
+    '31337': 'localhost',
+    'local': 'localhost',
+    '11155111': 'sepolia',
+    'seth': 'sepolia',
+    '1': 'ethereum',
+    'eth': 'ethereum',
+    '8453': 'base',
+    'beth': 'base',
+    '137': 'polygon',
+    'pol': 'polygon'
+} as const;
 
 // MIME Types
 export const MIME_TYPES = {

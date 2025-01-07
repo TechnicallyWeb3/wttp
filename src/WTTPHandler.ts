@@ -194,7 +194,7 @@ export class WTTPHandler {
             await this.switchNetwork(networkName as SupportedNetworks);
         }
 
-        const response = this.executeRequest(await request);
+        const response = await this.executeRequest(await request);
 
         if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
             // Switch back to master network
