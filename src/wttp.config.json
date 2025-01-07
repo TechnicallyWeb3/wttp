@@ -1,60 +1,6 @@
 {
-  "masterNetwork": "seth",
+  "masterNetwork": "fantom",
   "networks": {
-    "seth": {
-      "chainId": 11155111,
-      "rpcUrls": [
-        "https://ethereum-sepolia-rpc.publicnode.com"
-      ],
-      "contracts": {
-        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
-        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
-        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
-      }
-    },
-    "localhost": {
-      "rpcUrls": [
-        "http://localhost:8545"
-      ],
-      "contracts": {
-        "dataPointStorageAddress": "0xeEb7EEA742Ba5446f4A64bAc2354E4eA4E53a88A",
-        "dataPointRegistryAddress": "0xDc0C5B0930fc4B3838846EAda467ea77691aD5fB",
-        "wttpAddress": "0x12cB591A9C6CE3ae7ff9280210aF6508F4D6967D"
-      }
-    },
-    "pol": {
-      "chainId": 137,
-      "rpcUrls": [
-        "https://polygon-bor-rpc.publicnode.com"
-      ],
-      "contracts": {
-        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
-        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
-        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
-      }
-    },
-    "eth": {
-      "chainId": 1,
-      "rpcUrls": [
-        "https://ethereum-rpc.publicnode.com"
-      ],
-      "contracts": {
-        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
-        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
-        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
-      }
-    },
-    "beth": {
-      "chainId": 8453,
-      "rpcUrls": [
-        "https://base-rpc.publicnode.com"
-      ],
-      "contracts": {
-        "dataPointStorageAddress": "0xa80a514c830dB8637baa8B5eA97F2a858b87bB4f",
-        "dataPointRegistryAddress": "0x1634e2E29AD886C3590667D45b2166153d964F79",
-        "wttpAddress": "0xE68c170E6aF1569dCD2B9E50854C9CF0eEAe9ACB"
-      }
-    },
     "sepolia": {
       "chainId": 11155111,
       "rpcUrls": [

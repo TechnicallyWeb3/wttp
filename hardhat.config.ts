@@ -3,6 +3,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "hardhat-switch-network";
 import "hardhat-docgen";
+import "@nomicfoundation/hardhat-verify";
 import dotenv from "dotenv";
 // import { setBlockGasLimit } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 // import { ethers } from "ethers";
@@ -119,6 +120,35 @@ const config: HardhatUserConfig = {
     optimism: optimism,
     op: optimism,
     "10": optimism,
+  },
+  etherscan: {
+    apiKey: {
+        mainnet: process.env.ETHERSCAN_API_KEY || "",
+        optimisticEthereum: process.env.OPSCAN_API_KEY || "",
+        arbitrumOne: process.env.ARBISCAN_API_KEY || "",
+        polygon: process.env.POLYGONSCAN_API_KEY || "",
+        base: process.env.BASESCAN_API_KEY || "",
+        fantom: process.env.FANTOMSCAN_API_KEY || "",
+        snowtrace: "snowtrace",
+    },
+    customChains: [
+      {
+        network: "fantom",
+        chainId: 250,
+        urls: {
+          apiURL: "https://api.ftmscan.com/api",
+          browserURL: "https://ftmscan.com"
+        }
+      },
+      {
+        network: "snowtrace",
+        chainId: 43114,
+        urls: {
+          apiURL: "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+          browserURL: "https://avalanche.routescan.io"
+        }
+      }
+    ]
   },
   docgen: {
     path: './docs/solidity',
