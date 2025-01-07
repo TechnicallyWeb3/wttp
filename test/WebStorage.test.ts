@@ -2,7 +2,7 @@ import { expect } from "chai";
 import hre from "hardhat";
 import { ethers } from "hardhat";
 import { contractManager } from '../lib/contractManager';
-import { DataPointStorage, Dev_DataPointRegistry } from "../typechain-types";
+// import { DataPointStorage, DataPointRegistry } from "../typechain-types";
 
 describe("WebStorage", function () {
     let dataPointStorage: any;
@@ -15,48 +15,36 @@ describe("WebStorage", function () {
     let gasPrice: any;
 
     async function estimateGas() {
-        return await hre.ethers.provider.getFeeData();
+        const feeData = await hre.ethers.provider.getFeeData();
+        const maxFeePerGas = feeData.maxFeePerGas ? feeData.maxFeePerGas : BigInt(40000000000);
+        const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ? feeData.maxPriorityFeePerGas : BigInt(2000000000);
+        
+        return { maxFeePerGas, maxPriorityFeePerGas };
     }
 
     before(async function () {
         this.timeout(100000);
         [tw3, publisher, dev] = await hre.ethers.getSigners();
 
-        // Deploy or load StatusMap
+        // Deploy StatusMap
         const StatusMap = await hre.ethers.getContractFactory("StatusMap");
-        const existingStatusMapAddress = contractManager.getContractAddress('statusMap');
         
-        if (existingStatusMapAddress) {
-            console.log("Loading existing StatusMap at:", existingStatusMapAddress);
-            statusMap = StatusMap.attach(existingStatusMapAddress);
-        } else {
-            gasPrice = await estimateGas();
-            statusMap = await StatusMap.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            });
-            await statusMap.waitForDeployment();
-            contractManager.saveContract('statusMap', await statusMap.getAddress());
-            console.log("StatusMap deployed at:", await statusMap.getAddress());
-        }
+        gasPrice = await estimateGas();
+        statusMap = await StatusMap.deploy({
+            ...gasPrice
+        });
+        await statusMap.waitForDeployment();
+        console.log("StatusMap deployed at:", await statusMap.getAddress());
 
         // Deploy or load TypeMap
         const TypeMap = await hre.ethers.getContractFactory("TypeMap");
-        const existingTypeMapAddress = contractManager.getContractAddress('typeMap');
-        
-        if (existingTypeMapAddress) {
-            console.log("Loading existing TypeMap at:", existingTypeMapAddress);
-            typeMap = TypeMap.attach(existingTypeMapAddress);
-        } else {
-            gasPrice = await estimateGas();
-            typeMap = await TypeMap.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            });
-            await typeMap.waitForDeployment();
-            contractManager.saveContract('typeMap', await typeMap.getAddress());
-            console.log("TypeMap deployed at:", await typeMap.getAddress());
-        }
+
+        gasPrice = await estimateGas();
+        typeMap = await TypeMap.deploy({
+            ...gasPrice
+        });
+        await typeMap.waitForDeployment();
+        console.log("TypeMap deployed at:", await typeMap.getAddress());
 
         // Deploy or load DataPointStorage
         const DataPointStorage = await hre.ethers.getContractFactory("DataPointStorage");
@@ -64,20 +52,19 @@ describe("WebStorage", function () {
         
         if (existingDPSAddress) {
             console.log("Loading existing DataPointStorage at:", existingDPSAddress);
-            dataPointStorage = DataPointStorage.attach(existingDPSAddress) as DataPointStorage;
+            dataPointStorage = DataPointStorage.attach(existingDPSAddress);
         } else {
             gasPrice = await estimateGas();
             dataPointStorage = await DataPointStorage.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            }) as DataPointStorage;
+                ...gasPrice
+            });
             await dataPointStorage.waitForDeployment();
             contractManager.saveContract('dataPointStorage', await dataPointStorage.getAddress());
             console.log("DataPointStorage deployed at:", await dataPointStorage.getAddress());
         }
 
         // Deploy or load DataPointRegistry
-        const DataPointRegistry = await hre.ethers.getContractFactory("Dev_DataPointRegistry");
+        const DataPointRegistry = await hre.ethers.getContractFactory("DataPointRegistry");
         const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
         
         if (existingDPRAddress) {
@@ -89,10 +76,9 @@ describe("WebStorage", function () {
                 await dataPointStorage.getAddress(),
                 tw3.address,
                 {
-                    maxFeePerGas: gasPrice.maxFeePerGas,
-                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                    ...gasPrice
                 }
-            ) as Dev_DataPointRegistry;
+            );
             await dataPointRegistry.waitForDeployment();
             contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
             console.log("DataPointRegistry deployed at:", await dataPointRegistry.getAddress());
@@ -109,8 +95,7 @@ describe("WebStorage", function () {
             gasPrice = await estimateGas();
             const randomStatus = Math.floor(Math.random() * 10000);
             const tx = await statusMap.setStatus(randomStatus, `Custom Error ${randomStatus}`, {
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                ...gasPrice
             });
             await tx.wait();
 
@@ -123,8 +108,7 @@ describe("WebStorage", function () {
             const randomStatus = Math.floor(Math.random() * 10000);
             await expect(
                 statusMap.connect(publisher).setStatus(randomStatus, `Custom Error ${randomStatus}`, {
-                    maxFeePerGas: gasPrice.maxFeePerGas,
-                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                    ...gasPrice
                 })
             ).to.be.reverted;
         });
@@ -143,8 +127,7 @@ describe("WebStorage", function () {
             const randomType = Math.floor(Math.random() * 10000);
             gasPrice = await estimateGas();
             const tx = await typeMap.setType(0, `custom/type${randomType}`, `0x${randomType.toString(16).padStart(4, '0')}`, {
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                ...gasPrice
             });
             await tx.wait();
 
@@ -166,8 +149,7 @@ describe("WebStorage", function () {
 
             gasPrice = await estimateGas();
             const tx = await dataPointStorage.writeDataPoint(dataPoint, {
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                ...gasPrice
             });
             await tx.wait();
 
@@ -206,8 +188,7 @@ describe("WebStorage", function () {
                 publisher.address,
                 {
                     value: royaltyAmount,
-                    maxFeePerGas: gasPrice.maxFeePerGas,
-                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                    ...gasPrice
                 }
             );
             await tx.wait();
@@ -226,8 +207,7 @@ describe("WebStorage", function () {
                 ethers.ZeroAddress,
                 {
                     value: royaltyAmount2,
-                    maxFeePerGas: gasPrice.maxFeePerGas,
-                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                    ...gasPrice
                 }
             );
             await tx.wait();
