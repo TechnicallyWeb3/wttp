@@ -97,7 +97,11 @@ export class ResponseBuilder {
         const { head } = rawResponse;
         let body = rawResponse.body;
 
-        // console.log(body);
+        console.log("Building response...");
+        console.log(`Request:`);
+        console.log(request);
+        console.log(`Raw Response:`);
+        console.log(rawResponse);
         // Use the new buildHeaders method
         const headers = head ? this.buildHeaders(head) : new Headers();
         let statusCode = head ? head.responseLine.code : 500;

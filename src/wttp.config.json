@@ -1,5 +1,5 @@
 {
-  "masterNetwork": "fantom",
+  "masterNetwork": "polygon",
   "networks": {
     "sepolia": {
       "chainId": 11155111,

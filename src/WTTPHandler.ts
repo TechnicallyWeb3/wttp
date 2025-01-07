@@ -194,12 +194,13 @@ export class WTTPHandler {
             await this.switchNetwork(networkName as SupportedNetworks);
         }
 
-        const response = await this.executeRequest(await request);
-
-        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
-            // Switch back to master network
-            await this.switchNetwork(this.masterNetwork);
-        }
+        const response = this.executeRequest(await request).then((response) => {
+            if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
+                // Switch back to master network
+                this.switchNetwork(this.masterNetwork);
+            }
+            return response;
+        });
 
         return response;
     }
@@ -364,6 +365,7 @@ export class WTTPHandler {
         const provider = this.providerManager.getProvider(networkName);
         this.defaultSigner = this.defaultSigner.connect(provider);
         this.wttp = this.wttp.connect(this.defaultSigner);
+        // console.log(`Switched to ${networkName} network`);
     }
 
     /**
@@ -480,13 +482,15 @@ export class WTTPHandler {
      * @returns Promise<Response> - Response from the WTTP site
      */
     public async executeRequest(request: any) {
-        // console.log(`Executing request:`);
+        console.log(`Executing request...`);
+        // console.log(`Request:`);
         // console.log(request);
+        // console.log(`Request method: ${request.method}`);
 
-        if (request.networkName && request.networkName !== this.masterNetwork) {
-            // Switch networks if specified
-            await this.switchNetwork(request.networkName);
-        }
+        // if (request.networkName && request.networkName !== this.masterNetwork) {
+        //     // Switch networks if specified
+        //     await this.switchNetwork(request.networkName);
+        // }
 
         let rawResponse;
         if (request.error) {
@@ -555,9 +559,11 @@ export class WTTPHandler {
                     };
                     return this.buildResponse(request, rawResponse);
                 }
-
+                console.log(`Loading site ${request.host}`);
                 const site = await this.loadSite(request.host);
+                console.log(`Site loaded`);
                 const royalty = await this.loadRoyalty(request);
+                console.log(`Royalty: ${royalty}`);
 
                 const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PUT(
                     request.requestLine,
@@ -568,17 +574,55 @@ export class WTTPHandler {
                     request.data,
                     { value: royalty }
                 );
+                console.log(`Transaction sent`);
 
                 const receipt = await tx.wait();
-                const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'PUTSuccess') as EventLog;
+                console.log(`Transaction confirmed`);
+
+                const event = (receipt?.logs?.find((e: any) => e.fragment?.name === 'PUTSuccess') as EventLog);
                 rawResponse = event?.args?.putResponse;
-                // console.log(rawResponse);
-                // console.log(`Event args:`);
-                // console.log(event?.args);
+                
+                // console.log(`Receipt:`);
+                // console.log(receipt);
+                console.log(`Receipt Log 0 Data:`);
+                console.log(receipt?.logs[0] || '0x00');
+
+                const decoded = site.interface.decodeEventLog(receipt?.logs[1] || { topics: [], data: '' });
+                console.log(`Decoded event:`);
+                console.log(decoded);
                 break;
             }
 
             case Method.PATCH: {
+
+                if (!request.data) {
+                    rawResponse = {
+                        head: {
+                            responseLine: {
+                                protocol: "WTTP/2.0",
+                                code: 400
+                            },
+                            headerInfo: DEFAULT_HEADER
+                        },
+                        body: "Client Error: Data is required for PATCH requests"
+                    };
+                    return this.buildResponse(request, rawResponse);
+                }
+
+                if (!request.chunk) {
+                    rawResponse = {
+                        head: {
+                            responseLine: {
+                                protocol: "WTTP/2.0",
+                                code: 400
+                            },
+                            headerInfo: DEFAULT_HEADER
+                        },
+                        body: "Client Error: Chunk is required for PATCH requests"
+                    };
+                    return this.buildResponse(request, rawResponse);
+                }
+
                 const site = await this.loadSite(request.host);
                 const royalty = await this.loadRoyalty(request);
                 // console.log(`Request Signer: ${request.signer.connect(this.provider)}`);
@@ -638,11 +682,10 @@ export class WTTPHandler {
         // console.log(`Request:`);
         // console.log(request.method);
 
+        rawResponse = rawResponse ? this.buildResponse(request, rawResponse) :
+            new Response("Internal Server Error", { status: 590 })
         // console.log(`Raw response:`);
         // console.log(rawResponse);
-
-        rawResponse = rawResponse ? this.buildResponse(request, rawResponse) :
-            new Response("Internal Server Error", { status: 500 })
 
         return rawResponse;
     }

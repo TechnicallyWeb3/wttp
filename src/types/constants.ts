@@ -8,7 +8,7 @@ try {
     const configPath = path.join(__dirname, '../wttp.config.json');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     MASTER_NETWORK = config.masterNetwork || 'polygon'; // Default to 'fantom' if not found
-    console.log('MASTER_NETWORK:', MASTER_NETWORK);
+    // console.log('MASTER_NETWORK:', MASTER_NETWORK);
 } catch (error) {
     MASTER_NETWORK = 'polygon'; // Default fallback
     console.warn('Could not load master network from config, using default:', MASTER_NETWORK);
