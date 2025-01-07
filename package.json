@@ -1,6 +1,6 @@
 {
   "name": "wttp-handler",
-  "version": "2.0.28",
+  "version": "2.0.29",
   "scripts": {
     "example": "node examples/basic-fetch.js",
     "test": "npx hardhat test",
