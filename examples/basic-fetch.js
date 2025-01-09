@@ -3,7 +3,9 @@ const { Wallet } = require('ethers');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const site = "0x7c1EecB4a6AB71B6C6E101FF811456fde4b657e3:sepolia";
+const site = "0x3ab97b45674f9765446D500108Aee044DF7934e6:sepolia";
+// const site = "0x6927E406B232251c0eDe09D2d42659BeB3b986A8";
+
 const signer = new Wallet(process.env.PRIVATE_KEY); // use private key from .env
 
 async function main() {

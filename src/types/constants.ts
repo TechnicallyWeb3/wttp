@@ -498,3 +498,5 @@ export const DEFAULT_HEADER = {
 // Supported protocols
 export const SUPPORTED_PROTOCOLS = ['wttp', 'http', 'https'];
 
+
+// [0x536f6d657468696e67206e6577]

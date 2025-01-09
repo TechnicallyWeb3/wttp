@@ -9,8 +9,6 @@ import { SupportedNetworks } from "../types/constants";
  * Handles provider initialization, configuration loading, and network switching
  */
 export class ProviderManager {
-    /** Current active provider instance */
-    private provider: Provider;
     /** Configuration data loaded from wttp.config.json */
     private config: any;
 
@@ -19,7 +17,7 @@ export class ProviderManager {
      */
     constructor() {
         this.loadConfig();
-        this.provider = this.getProvider(this.config.masterNetwork);
+        // console.log(this.provider);
         // console.log(await this.provider.getBlockNumber());
     }
 
@@ -62,8 +60,10 @@ export class ProviderManager {
      * @param network - Network to get provider for
      * @returns Provider instance for the network
      */
-    public getProvider(network: SupportedNetworks) {
-        this.provider = new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config.networks[network].chainId);
-        return this.provider;
+    public getProvider(network: SupportedNetworks): Provider {
+        console.log(`Getting provider for ${network} network`);
+        console.log(`RPC URL: ${this.getRpcUrl(network)}`);
+        console.log(`Chain ID: ${this.config.networks[network].chainId}`);
+        return new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config.networks[network].chainId);
     }
 }

@@ -90,19 +90,19 @@ export class WTTPHandler {
             wttpAddress = this.getWTTPAddress(networkName);
         }
 
-        const provider = this.providerManager.getProvider(networkName);
+        this.provider = this.getProvider(networkName);
+        // console.log(this.provider);
 
         if (!signer) {
-            signer = ethers.Wallet.createRandom().connect(provider);
+            signer = ethers.Wallet.createRandom().connect(this.provider);
         } else if (!signer.provider) {
-            signer = signer.connect(provider);
+            signer = signer.connect(this.provider);
         }
 
         this.defaultSigner = signer;
         this.masterNetwork = networkName;
         this.wttpAddress = wttpAddress;
         this.wttp = WTTP__factory.connect(String(wttpAddress), signer);
-        this.provider = provider;
         // // Initialize WTTP synchronously instead of asynchronously
         // try {
         //     // Remove network switching for testing
@@ -362,8 +362,11 @@ export class WTTPHandler {
      * @private
      */
     private async switchNetwork(networkName: SupportedNetworks) {
-        const provider = this.providerManager.getProvider(networkName);
-        this.defaultSigner = this.defaultSigner.connect(provider);
+        console.log(`Switching to ${networkName} network`);
+        console.log((await this.provider.getNetwork()).name);
+        this.provider = this.getProvider(networkName);
+        console.log((await this.provider.getNetwork()).name);
+        this.defaultSigner = this.defaultSigner.connect(this.provider);
         this.wttp = this.wttp.connect(this.defaultSigner);
         // console.log(`Switched to ${networkName} network`);
     }
@@ -559,37 +562,84 @@ export class WTTPHandler {
                     };
                     return this.buildResponse(request, rawResponse);
                 }
-                console.log(`Loading site ${request.host}`);
+                console.log(`Loading site ${request.host} on ${(await this.provider.getNetwork()).name}.`);
                 const site = await this.loadSite(request.host);
-                console.log(`Site loaded`);
+                // console.log(`Site loaded`);
                 const royalty = await this.loadRoyalty(request);
-                console.log(`Royalty: ${royalty}`);
+                // console.log(`Royalty: ${royalty}`);
 
-                const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PUT(
-                    request.requestLine,
-                    request.mimeType,
-                    request.charset,
-                    request.location,
-                    request.publisher,
-                    request.data,
-                    { value: royalty }
-                );
-                console.log(`Transaction sent`);
+                try {
+                    const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PUT(
+                        request.requestLine,
+                        request.mimeType,
+                        request.charset,
+                        request.location,
+                        request.publisher,
+                        request.data,
+                        { value: royalty }
+                    );
+                    console.log(`Transaction sent: ${tx.hash}`);
 
-                const receipt = await tx.wait();
-                console.log(`Transaction confirmed`);
+                    const receipt = await tx.wait();
+                    
+                    // Check if transaction was successful
+                    if (receipt?.status === 0) {
+                        throw new Error('Transaction failed');
+                    }
+                    
+                    console.log(`Transaction confirmed in block ${receipt?.blockNumber}`);
 
-                const event = (receipt?.logs?.find((e: any) => e.fragment?.name === 'PUTSuccess') as EventLog);
-                rawResponse = event?.args?.putResponse;
+                    // Verify we have the expected event
+                    const putSuccessEvent = receipt?.logs?.find(
+                        (log: any) => log.fragment?.name === 'PUTSuccess'
+                    ) as EventLog;
+                    
+                    if (!putSuccessEvent) {
+                        throw new Error('PUTSuccess event not found in transaction logs');
+                    }
+
+                    rawResponse = putSuccessEvent.args?.putResponse;
+                } catch (error) {
+                    console.error('PUT transaction failed:', error);
+                    let body;
+                    if (error instanceof Error) {
+                        body = error.message;
+                    } else {
+                        body = error;
+                    }
+                    rawResponse = {
+                        head: {
+                            responseLine: {
+                                protocol: "WTTP/2.0",
+                                code: 590
+                            },
+                            headerInfo: DEFAULT_HEADER
+                        },
+                        body: `Transaction failed: ${body}`
+                    };
+                }
+
+                console.log(`Raw response:`);
+                console.log(rawResponse);
+
+                // const event = (receipt?.logs?.find((e: any) => e.fragment?.name === 'PUTSuccess') as EventLog);
+                // rawResponse = event?.args?.putResponse;
                 
-                // console.log(`Receipt:`);
-                // console.log(receipt);
-                console.log(`Receipt Log 0 Data:`);
-                console.log(receipt?.logs[0] || '0x00');
+                // console.log(`Event:`);
+                // console.log(event);
+                // console.log(`Receipt Log 0 Data:`);
+                // const logs = receipt?.logs || [];
+                // const log = logs[0] || { topics: [], data: '' };
+                // console.log(log);
 
-                const decoded = site.interface.parseLog(receipt?.logs[1] || { topics: [], data: '' });
-                console.log(`Decoded event:`);
-                console.log(decoded);
+                // const decoded = site.interface.parseLog(logs[0])?.fragment;
+                // const decoded1 = site.interface.parseLog(logs[1])?.fragment;
+                // console.log(`Decoded event:`);
+                // console.log(decoded);
+                // console.log(`Decoded event 1:`);
+                // console.log(decoded1);
+
+
                 break;
             }
 
@@ -732,7 +782,7 @@ export class WTTPHandler {
      * @param networkName - Name of the network
      * @returns Promise<ethers.Provider> - Network provider
      */
-    public async getProvider(networkName: SupportedNetworks) {
+    public getProvider(networkName: SupportedNetworks) {
         return this.providerManager.getProvider(networkName);
     }
 }
