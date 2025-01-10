@@ -30,6 +30,11 @@ async function main() {
         { deployer: wttpDeployer, gasLimit: gasEstimates.wttp }
     ];
 
+    console.log(`Main Wallet: ${funder.address}`);
+    console.log(`Gas estimate total: ${ethers.formatUnits((gasEstimates.dps + gasEstimates.dpr + gasEstimates.wttp)*gasPrice, "ether")} Ether`);
+    console.log(`Gas price: ${gasPrice}`);
+    console.log(`Gas estimates: ${gasEstimates.dps} + ${gasEstimates.dpr} + ${gasEstimates.wttp}`);
+
     // Process each deployer sequentially instead of in parallel
     for (const { deployer, gasLimit } of deployersToFund) {
         const balance = await ethers.provider.getBalance(deployer.address);

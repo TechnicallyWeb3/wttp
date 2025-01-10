@@ -35,7 +35,7 @@ async function main() {
         dataPointRegistry = await dprWithSigner.deploy(
             dataPointStorage.target,
             "0xC6266149f988448b540899A91A0339Db67742e27",
-            ethers.parseUnits("0.25", "gwei")
+            ethers.parseUnits("0.001", "gwei")
         );
         // SETH 10000000000 / 10 gwei //
         // ETH 15000000 / 0.015 gwei //
@@ -45,6 +45,8 @@ async function main() {
         // ARB 250000000 / 0.25 gwei //
         // OP 150000 / 0.00015 gwei //
         // AVAX 15000000 / 0.015 gwei //
+        // AVS 1000000 / 0.001 gwei //
+
         await dataPointRegistry.waitForDeployment();
         console.log("DataPointRegistry deployed to:", dataPointRegistry.target);
         contractManager.saveContract('dataPointRegistry', String(dataPointRegistry.target));

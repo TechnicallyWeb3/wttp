@@ -86,6 +86,13 @@ const optimism = {
   accounts: defaultAccount
 }
 
+const aves = {
+  url: "https://rpc.avescoin.io",
+  chainId: 33333,
+  blockGasLimit: 200000000,
+  accounts: defaultAccount
+}
+
 const config: HardhatUserConfig = {
   solidity: "0.8.27",
   networks: {
@@ -105,6 +112,7 @@ const config: HardhatUserConfig = {
     arbitrum: arbitrum,
     avalanche: avalanche,
     optimism: optimism,
+    aves: aves,
   },
   etherscan: {
     apiKey: {
@@ -115,6 +123,7 @@ const config: HardhatUserConfig = {
         base: process.env.BASESCAN_API_KEY || "",
         fantom: process.env.FANTOMSCAN_API_KEY || "",
         snowtrace: "snowtrace",
+        aves: "blockscout",
     },
     customChains: [
       {
@@ -132,8 +141,19 @@ const config: HardhatUserConfig = {
           apiURL: "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
           browserURL: "https://avalanche.routescan.io"
         }
+      },
+      {
+        network: "aves",
+        chainId: 33333,
+        urls: {
+          apiURL: "https://avescoin.io/api",
+          browserURL: "https://avescoin.io"
+        }
       }
     ]
+  },
+  sourcify: {
+    enabled: false
   },
   docgen: {
     path: './docs/solidity',
