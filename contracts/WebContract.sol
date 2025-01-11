@@ -410,17 +410,6 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         emit ResourceDeleted(_path);
     }
 
-    // input path such as /about with a en-US language and utf-8 charset would resolve to /about/index.en-US.html
-    function _createVariation(
-        string memory _path,
-        bytes2 _language,
-        bytes2 _charset,
-        string memory _variation
-    ) internal {
-        variations[_path][_language][_charset] = _variation;
-        emit VariationCreated(_path, _language, _charset, _variation);
-    }
-
     // Events
     event HeaderUpdated(string path, HeaderInfo header, Redirect redirect);
     event ResourceCreated(string path, uint256 size, address publisher);
@@ -509,7 +498,9 @@ abstract contract WTTPSite is WTTPStorage {
         return true;
     }
 
-    constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPStorage(_dpr, _owner, _header) {}
+    constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPStorage(_dpr, _owner, _header) {
+        emit SiteCreated(address(this), _dpr, _owner, _header);
+    }
     
     function _methodAllowed(string memory _path, Method _method) internal view returns (bool) {
         uint16 methodBit = uint16(1 << uint8(_method)); // Create a bitmask for the method
@@ -535,7 +526,7 @@ abstract contract WTTPSite is WTTPStorage {
         if (!compatibleWTTPVersion(requestLine.protocol)) {
             head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
-                code: 505
+                code: 515
             });
         }
         // 400 codes
@@ -544,12 +535,14 @@ abstract contract WTTPSite is WTTPStorage {
                 protocol: requestLine.protocol,
                 code: 405
             });
-        } else if (_dataPoints.length == 0) {
-            head.responseLine = ResponseLine({
-                protocol: requestLine.protocol,
-                code: 404
-            });
-        } 
+        }
+        // not needed because it's addressed in LOCATE
+        // else if (_dataPoints.length == 0) {
+        //     head.responseLine = ResponseLine({
+        //         protocol: requestLine.protocol,
+        //         code: 404
+        //     });
+        // } 
         // 300 codes
         else if (head.headerInfo.redirect.code != 0) {
             head.responseLine = ResponseLine({
@@ -588,6 +581,7 @@ abstract contract WTTPSite is WTTPStorage {
         string memory _path = requestLine.path;
         locateResponse.head = HEAD(requestLine);
         locateResponse.dpsAddress = address(DPS_);
+
         if (!_methodAllowed(_path, Method.LOCATE)) {
             locateResponse.head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
@@ -595,36 +589,13 @@ abstract contract WTTPSite is WTTPStorage {
             });
         } else {
             locateResponse.dataPoints = _readLocation(_path);
+            if (locateResponse.dataPoints.length == 0) {
+                locateResponse.head.responseLine = ResponseLine({
+                    protocol: requestLine.protocol,
+                    code: 404
+                });
+            }
         }
-    }
-
-    /// @notice Handles PATH requests for content negotiation
-    /// @dev Returns resolved path based on language and charset preferences
-    /// @param requestLine Request information
-    /// @param _language Preferred language code
-    /// @param _charset Preferred character set
-    /// @return pathResponse Response containing resolved path
-    function PATH(
-        RequestLine memory requestLine,
-        bytes2 _language,
-        bytes2 _charset
-    ) public view returns (HEADResponse memory pathResponse) {
-        string memory _path = requestLine.path;
-        if (!_methodAllowed(_path, Method.PATH)) {
-            pathResponse.responseLine = ResponseLine({
-                protocol: requestLine.protocol,
-                code: 405
-            });
-        } else {
-            pathResponse.headerInfo = _readHeader(_path);
-            pathResponse.headerInfo.redirect.code = 301;
-            pathResponse.headerInfo.redirect.location = _readVariation(_path, _language, _charset);
-            pathResponse.metadata = _readMetadata(_path);
-            bytes32[] memory _dataPoints = _readLocation(_path);
-            pathResponse.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
-            pathResponse.etag = keccak256(abi.encode(_dataPoints));
-        }
-        return pathResponse;
     }
 
     /// @notice Handles DEFINE requests to update resource headers
@@ -637,14 +608,20 @@ abstract contract WTTPSite is WTTPStorage {
         HeaderInfo memory _header
     ) public returns (HEADResponse memory defineResponse) {
         string memory _path = _requestLine.path;
-        if (_methodAllowed(_path, Method.DEFINE)) {
-            _writeHeader(_path, _header);
-            defineResponse = HEAD(_requestLine);
-        } else {
+
+        if (!_isResourceAdmin(_path, msg.sender)) {
+            defineResponse.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 403
+            });
+        } else if (!_methodAllowed(_path, Method.DEFINE)) {
             defineResponse.responseLine = ResponseLine({
                 protocol: _requestLine.protocol,
                 code: 405
             });
+        } else {
+            _writeHeader(_path, _header);
+            defineResponse = HEAD(_requestLine);
         }
 
         emit DEFINESuccess(msg.sender, _requestLine, defineResponse);
@@ -689,7 +666,18 @@ abstract contract WTTPSite is WTTPStorage {
         bytes memory _data
     ) public payable returns (PUTResponse memory putResponse) {
         string memory _path = _requestLine.path;
-        if (_methodAllowed(_path, Method.PUT)) {
+
+        if (!_isResourceAdmin(_path, msg.sender)) { 
+            putResponse.head.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 403
+            });
+        } else if (!_methodAllowed(_path, Method.PUT)) {
+            putResponse.head.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 405
+            });
+        } else {
             putResponse.dataPointAddress =
                 _createResource(
                 _path,
@@ -703,11 +691,6 @@ abstract contract WTTPSite is WTTPStorage {
             putResponse.head.responseLine = ResponseLine({
                 protocol: _requestLine.protocol,
                 code: 201
-            });
-        } else {
-            putResponse.head.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 405
             });
         }
 
@@ -728,20 +711,33 @@ abstract contract WTTPSite is WTTPStorage {
         address _publisher
     ) public payable returns (PUTResponse memory patchResponse) {
         string memory _path = _requestLine.path;
-        if (_methodAllowed(_path, Method.PATCH)) {
-            patchResponse.dataPointAddress = _updateResource(_path, _data, _chunk, _publisher);
-            patchResponse.head = HEAD(_requestLine);
-        } else {
+
+        if (!_isResourceAdmin(_path, msg.sender)) {
+            patchResponse.head.responseLine = ResponseLine({
+                protocol: _requestLine.protocol,
+                code: 403
+            });
+        } else if (!_methodAllowed(_path, Method.PATCH)) {
             patchResponse.head.responseLine = ResponseLine({
                 protocol: _requestLine.protocol,
                 code: 405
             });
+        } else {
+            patchResponse.dataPointAddress = _updateResource(_path, _data, _chunk, _publisher);
+            patchResponse.head = HEAD(_requestLine);
         }
 
         emit PATCHSuccess(msg.sender, _requestLine, patchResponse);
     }
 
     // Define events
+    /// @notice Emitted when the site is created
+    /// @param siteAddress Address of the site
+    /// @param dpr Address of the data point registry
+    /// @param owner Address of the site owner
+    /// @param header Header information for the site
+    event SiteCreated(address indexed siteAddress, address indexed dpr, address indexed owner, HeaderInfo header);
+
     /// @notice Emitted when a PATCH request succeeds
     /// @param publisher Address of content publisher
     /// @param requestLine Original request information
