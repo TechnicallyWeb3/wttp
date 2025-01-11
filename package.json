@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
-    "ethers": "^6.13.4"
+    "ethers": "^6.13.5"
   },
   "description": "A decentralized version of the HTTP protocol using blockchain.",
   "main": "dist/src/WTTPHandler.js",
