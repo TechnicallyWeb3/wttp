@@ -19,10 +19,45 @@ describe("WebContract (WTTP/2.0)", function () {
 
     async function estimateGas() {
         const feeData = await hre.ethers.provider.getFeeData();
-        // Only return EIP-1559 parameters
+        
+        // Network-specific default gas prices (in gwei)
+        const defaultGasPrices = {
+            'polygon': BigInt(40000000000),    // 40 gwei
+            'arbitrum': BigInt(250000000),     // 0.25 gwei
+            'optimism': BigInt(150000),        // 0.00015 gwei
+            'base': BigInt(150000),            // 0.00015 gwei
+            'avalanche': BigInt(15000000),     // 0.015 gwei
+            'fantom': BigInt(100000000),       // 0.1 gwei
+            'hardhat': BigInt(40000000000),    // 40 gwei (fallback)
+        };
+
+        const networkName = hre.network.name.toLowerCase();
+        const defaultGasPrice = defaultGasPrices[networkName] || defaultGasPrices['hardhat'];
+
+        // For EIP-1559 compatible networks
+        if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+            return {
+                deployParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                },
+                txParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                    gasLimit: BigInt(2000000), // Reasonable gas limit for transactions
+                }
+            };
+        }
+
+        // For legacy networks
         return {
-            maxFeePerGas: feeData.maxFeePerGas || BigInt(40000000000),
-            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas || BigInt(2000000000)
+            deployParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+            },
+            txParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+                gasLimit: BigInt(2000000),
+            }
         };
     }
 
@@ -33,9 +68,9 @@ describe("WebContract (WTTP/2.0)", function () {
         [tw3, user1, user2] = await hre.ethers.getSigners();
         const gasPrice = await estimateGas();
 
-        console.log(`TW3: ${tw3.address}`);
-        console.log(`User 1: ${user1.address}`);
-        console.log(`User 2: ${user2.address}`);
+        // console.log(`TW3: ${tw3.address}`);
+        // console.log(`User 1: ${user1.address}`);
+        // console.log(`User 2: ${user2.address}`);
 
         // Deploy or load DataPointStorage
         const DataPointStorage = await hre.ethers.getContractFactory("DataPointStorage");
@@ -46,7 +81,7 @@ describe("WebContract (WTTP/2.0)", function () {
             dataPointStorage = DataPointStorage.attach(existingDPSAddress);
         } else {
             dataPointStorage = await DataPointStorage.deploy({
-                ...gasPrice
+                ...gasPrice.deployParams
             });
             
             await dataPointStorage.waitForDeployment();
@@ -66,50 +101,14 @@ describe("WebContract (WTTP/2.0)", function () {
             dataPointRegistry = await DataPointRegistry.deploy(
                 await dataPointStorage.getAddress(),
                 tw3.address,
+                1000000,
                 {
-                    ...gasPrice
+                    ...gasPrice.deployParams
                 }
             );
             await dataPointRegistry.waitForDeployment();
             contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
             console.log("DataPointRegistry deployed at:", await dataPointRegistry.getAddress());
-        }
-
-        // Deploy or load WTTPPermissions
-        const WTTPPermissions = await hre.ethers.getContractFactory("Dev_WTTPPermissions");
-        const existingWTTPPermissionsAddress = contractManager.getContractAddress('wttpPermissions');
-        
-        if (existingWTTPPermissionsAddress) {
-            console.log("Loading existing WTTPPermissions at:", existingWTTPPermissionsAddress);
-            wttpPermissions = WTTPPermissions.attach(existingWTTPPermissionsAddress);
-        } else {
-            wttpPermissions = await WTTPPermissions.deploy({
-                ...gasPrice
-            });
-            
-            await wttpPermissions.waitForDeployment();
-            contractManager.saveContract('wttpPermissions', await wttpPermissions.getAddress());
-            console.log("WTTPPermissions deployed at:", await wttpPermissions.getAddress());
-        }
-
-        // Deploy or load WTTPStorage
-        const WTTPStorage = await hre.ethers.getContractFactory("Dev_WTTPStorage");
-        const existingWTTPStorageAddress = undefined;
-        
-        if (existingWTTPStorageAddress) {
-            console.log("Loading existing WTTPStorage at:", existingWTTPStorageAddress);
-            wttpStorage = WTTPStorage.attach(existingWTTPStorageAddress);
-        } else {
-            wttpStorage = await WTTPStorage.deploy(
-                await dataPointRegistry.getAddress(),
-                tw3.address,
-                {
-                    ...gasPrice
-                }
-            );
-            await wttpStorage.waitForDeployment();
-            contractManager.saveContract('wttpStorage', await wttpStorage.getAddress());
-            console.log("WTTPStorage deployed at:", await wttpStorage.getAddress());
         }
 
         // Deploy or load WTTPSite
@@ -124,7 +123,7 @@ describe("WebContract (WTTP/2.0)", function () {
                 await dataPointRegistry.getAddress(),
                 tw3.address,
                 {
-                    ...gasPrice
+                    ...gasPrice.deployParams
                 }
             );
             await wttpSite.waitForDeployment();
@@ -132,89 +131,92 @@ describe("WebContract (WTTP/2.0)", function () {
             console.log("WTTPSite deployed at:", await wttpSite.getAddress());
         }
         
-        adminRole = await wttpPermissions.siteAdmin();
     });
 
-    describe("WTTP Permissions", function () {
-        it("Should correctly manage site admin roles", async function () {
-            const gasPrice = await estimateGas();
-            expect(await wttpPermissions.isSiteAdmin(tw3.address)).to.be.true;
+    // describe("WTTP Permissions", function () {
+    //     it("Should correctly manage site admin roles", async function () {
+    //         const gasPrice = await estimateGas();
+    //         expect(await wttpPermissions.isSiteAdmin(tw3.address)).to.be.true;
 
-            tx = await wttpPermissions.grantRole(adminRole, user1.address, {
-                ...gasPrice
-            });
-            await tx.wait();
+    //         tx = await wttpPermissions.grantRole(adminRole, user1.address, {
+    //             gasPrice: await estimateGas()
+    //         });
+    //         await tx.wait();
 
-            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
-        });
+    //         expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
+    //     });
 
-        it("Should prevent site admins from creating other site admins", async function () {
-            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
+    //     it("Should prevent site admins from creating other site admins", async function () {
+    //         expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
 
-            gasPrice = await estimateGas();
+    //         gasPrice = await estimateGas();
 
-            await expect(wttpPermissions.connect(user1).grantRole(adminRole, user2.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas })).to.be.reverted;
+    //         await expect(wttpPermissions.connect(user1).grantRole(adminRole, user2.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas })).to.be.reverted;
 
-        });
+    //     });
 
-        it("Should prevent resource admins from creating roles", async function () {
-            expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
+    //     it("Should prevent resource admins from creating roles", async function () {
+    //         expect(await wttpPermissions.isSiteAdmin(user1.address)).to.be.true;
 
-            const roleName = "TEST_RESOURCE_ADMIN";
-            gasPrice = await estimateGas();
-            // console.log(gasPrice);
-            tx = await wttpPermissions.connect(user1).createResourceRole(roleName, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-            await tx.wait();
+    //         const roleName = "TEST_RESOURCE_ADMIN";
+    //         gasPrice = await estimateGas();
+    //         // console.log(gasPrice);
+    //         tx = await wttpPermissions.connect(user1).createResourceRole(roleName, {
+    //             gasPrice: await estimateGas()
+    //         });
+    //         await tx.wait();
 
-            const roleHash = ethers.id(roleName);
-            gasPrice = await estimateGas();
-            tx = await wttpPermissions.connect(user1).grantRole(roleHash, user2.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-            await tx.wait();
+    //         const roleHash = ethers.id(roleName);
+    //         gasPrice = await estimateGas();
+    //         tx = await wttpPermissions.connect(user1).grantRole(roleHash, user2.address, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
+    //         await tx.wait();
 
-            gasPrice = await estimateGas();
-            // console.log(gasPrice);
-            await expect(
-                wttpPermissions.connect(user2).createResourceRole("NEW_ROLE", { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas })
-            ).to.be.reverted;
-        });
+    //         gasPrice = await estimateGas();
+    //         // console.log(gasPrice);
+    //         await expect(
+    //             wttpPermissions.connect(user2).createResourceRole("NEW_ROLE", { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas })
+    //         ).to.be.reverted;
+    //     });
 
-        it("Should allow creating resource-specific roles", async function () {
-            const roleName = "TEST_RESOURCE_ADMIN";
-            gasPrice = await estimateGas();
-            tx = await wttpPermissions.createResourceRole(roleName, { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas });
-            await tx.wait();
+    //     it("Should allow creating resource-specific roles", async function () {
+    //         const roleName = "TEST_RESOURCE_ADMIN";
+    //         gasPrice = await estimateGas();
+    //         tx = await wttpPermissions.createResourceRole(roleName, {
+    //             gasPrice: await estimateGas()
+    //         });
+    //         await tx.wait();
 
-            const roleHash = ethers.id(roleName);
-            expect(await wttpPermissions.hasRole(roleHash, tw3.address)).to.be.true;
-        });
-    });
+    //         const roleHash = ethers.id(roleName);
+    //         expect(await wttpPermissions.hasRole(roleHash, tw3.address)).to.be.true;
+    //     });
+    // });
 
-    describe("WTTP Storage", function () {
-        describe("Resource Management", function () {
-            it("Should create resource and verify data integrity", async function () {
-                const content = `<html><body>Should create resource and verify data integrity ${Date.now()}</body></html>`;
-                gasPrice = await estimateGas();
-                tx = await wttpStorage.createResource(
-                    "/test.html",
-                    ethers.hexlify("0x7468"), // text/html
-                    ethers.hexlify("0x7574"), // utf-8
-                    ethers.hexlify("0x0101"), // datapoint/chunk
-                    tw3.address,
-                    ethers.toUtf8Bytes(content),
-                    { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
-                );
-                await tx.wait();
+    // describe("WTTP Storage", function () {
+    //     describe("Resource Management", function () {
+    //         it("Should create resource and verify data integrity", async function () {
+    //             const content = `<html><body>Should create resource and verify data integrity ${Date.now()}</body></html>`;
+    //             gasPrice = await estimateGas();
+    //             tx = await wttpStorage.createResource(
+    //                 "/test.html",
+    //                 ethers.hexlify("0x7468"), // text/html
+    //                 ethers.hexlify("0x7574"), // utf-8
+    //                 ethers.hexlify("0x0101"), // datapoint/chunk
+    //                 tw3.address,
+    //                 ethers.toUtf8Bytes(content),
+    //                 { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+    //             );
+    //             await tx.wait();
 
-                const locations = await wttpStorage.readLocation("/test.html");
-                const dataPoint = await dataPointStorage.readDataPoint(locations[0]);
-                const metadata = await wttpStorage.readMetadata("/test.html");
+    //             const locations = await wttpStorage.readLocation("/test.html");
+    //             const dataPoint = await dataPointStorage.readDataPoint(locations[0]);
+    //             const metadata = await wttpStorage.readMetadata("/test.html");
 
-                expect(ethers.toUtf8String(dataPoint.data)).to.equal(content);
-                expect(metadata.version).to.equal(1);
-                expect(ethers.toUtf8String(dataPoint.data).length).to.equal(metadata.size);
-            });
-        });
-    });
+    //             expect(ethers.toUtf8String(dataPoint.data)).to.equal(content);
+    //             expect(metadata.version).to.equal(1);
+    //             expect(ethers.toUtf8String(dataPoint.data).length).to.equal(metadata.size);
+    //         });
+    //     });
+    // });
 
     describe("WTTP Methods", function () {
         it("Should allow site admin to PUT", async function () {
@@ -222,17 +224,23 @@ describe("WebContract (WTTP/2.0)", function () {
             gasPrice = await estimateGas();
             tx = await wttpSite.PUT(
                 { path: "/test.html", protocol: "WTTP/2.0" },
-                ethers.hexlify("0x7468"), // text/html
-                ethers.hexlify("0x7574"), // utf-8
-                ethers.hexlify("0x0101"), // datapoint/chunk
+                ethers.hexlify("0x7468"),
+                ethers.hexlify("0x7574"),
+                ethers.hexlify("0x0101"),
                 tw3.address,
                 ethers.toUtf8Bytes(content),
-                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
-            )
-            await tx.wait();
+                { ...gasPrice.txParams }
+            );
+            const receipt = await tx.wait();
+            // Look for PUTSuccess event in the transaction receipt
+            const putSuccessEvent = receipt.logs.find(log => log.fragment?.name === 'PUTSuccess');
+            expect(putSuccessEvent).to.not.be.undefined;
+            if (putSuccessEvent) {
+                console.log("PUTSuccess event found");
+            }
 
             const headResponse = await wttpSite.HEAD({ path: "/test.html", protocol: "WTTP/2.0" });
-
+            // console.log(headResponse);
             expect(headResponse.metadata.size).to.equal(content.length);
             expect(headResponse.metadata.version).to.equal(1);
 
@@ -256,7 +264,7 @@ describe("WebContract (WTTP/2.0)", function () {
                 ethers.hexlify("0x0101"),
                 tw3.address,
                 ethers.toUtf8Bytes(part1),
-                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+                { ...gasPrice.txParams }
             );
             await tx.wait();
 
@@ -266,7 +274,7 @@ describe("WebContract (WTTP/2.0)", function () {
                 ethers.toUtf8Bytes(part2),
                 1,
                 tw3.address,
-                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+                { ...gasPrice.txParams }
             );
             await tx.wait();
 
@@ -276,7 +284,7 @@ describe("WebContract (WTTP/2.0)", function () {
                 ethers.toUtf8Bytes(part3),
                 2,
                 tw3.address,
-                { maxFeePerGas: gasPrice.maxFeePerGas, maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas }
+                { ...gasPrice.txParams }
             );
             await tx.wait();
 

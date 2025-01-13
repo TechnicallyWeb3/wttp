@@ -1,9 +1,10 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
+import "@nomicfoundation/hardhat-ethers";
+import "@nomicfoundation/hardhat-verify";
 import "hardhat-switch-network";
 import "hardhat-docgen";
-import "@nomicfoundation/hardhat-verify";
 import dotenv from "dotenv";
 // import { setBlockGasLimit } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 // import { ethers } from "ethers";

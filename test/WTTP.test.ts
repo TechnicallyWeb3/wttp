@@ -8,19 +8,60 @@ import {
     DataPointStorage 
 } from "../typechain-types";
 import { DEFAULT_HEADER } from "../src/types/constants";
+import { Contract } from "ethers";
 
 describe("WTTP Protocol", function () {
-    let dataPointStorage: DataPointStorage;
-    let dataPointRegistry: DataPointRegistry;
+    let dataPointStorage;
+    let dataPointRegistry;
     let site: any;
-    let wttp: WTTP;
+    let wttp: any;
     let tw3: any;
     let user1: any;
     let user2: any;
     let gasPrice: any;
 
     async function estimateGas() {
-        return await hre.ethers.provider.getFeeData();
+        const feeData = await hre.ethers.provider.getFeeData();
+        
+        // Network-specific default gas prices (in gwei)
+        const defaultGasPrices = {
+            'polygon': BigInt(40000000000),    // 40 gwei
+            'arbitrum': BigInt(250000000),     // 0.25 gwei
+            'optimism': BigInt(150000),        // 0.00015 gwei
+            'base': BigInt(150000),            // 0.00015 gwei
+            'avalanche': BigInt(15000000),     // 0.015 gwei
+            'fantom': BigInt(100000000),       // 0.1 gwei
+            'hardhat': BigInt(40000000000),    // 40 gwei (fallback)
+        };
+
+        const networkName = hre.network.name.toLowerCase();
+        const defaultGasPrice = defaultGasPrices[networkName] || defaultGasPrices['hardhat'];
+
+        // For EIP-1559 compatible networks
+        if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+            return {
+                deployParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                },
+                txParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                    gasLimit: BigInt(2000000), // Reasonable gas limit for transactions
+                }
+            };
+        }
+
+        // For legacy networks
+        return {
+            deployParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+            },
+            txParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+                gasLimit: BigInt(2000000),
+            }
+        };
     }
 
     // Helper function to create test content
@@ -33,10 +74,7 @@ describe("WTTP Protocol", function () {
             ethers.hexlify("0x0101"), // datapoint/chunk
             tw3.address,
             ethers.toUtf8Bytes(content),
-            { 
-                maxFeePerGas: gasPrice.maxFeePerGas, 
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas 
-            }
+            gasPrice.txParams
         );
         await tx.wait();
     }
@@ -51,13 +89,12 @@ describe("WTTP Protocol", function () {
         
         if (existingDPSAddress) {
             console.log("Loading existing DataPointStorage at:", existingDPSAddress);
-            dataPointStorage = DataPointStorage.attach(existingDPSAddress) as DataPointStorage;
+            dataPointStorage = DataPointStorage.attach(existingDPSAddress);
         } else {
             gasPrice = await estimateGas();
-            dataPointStorage = await DataPointStorage.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            }) as DataPointStorage;
+            dataPointStorage = await DataPointStorage.deploy(
+                gasPrice.deployParams
+            );
             await dataPointStorage.waitForDeployment();
             contractManager.saveContract('dataPointStorage', await dataPointStorage.getAddress());
             console.log("DataPointStorage deployed at:", await dataPointStorage.getAddress());
@@ -68,17 +105,16 @@ describe("WTTP Protocol", function () {
         const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
         
         if (existingDPRAddress) {
-            dataPointRegistry = DataPointRegistry.attach(existingDPRAddress) as DataPointRegistry;
+            dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
         } else {
             gasPrice = await estimateGas();
+            console.log("gasPrice", gasPrice);
             dataPointRegistry = await DataPointRegistry.deploy(
                 await dataPointStorage.getAddress(),
                 tw3.address,
-                {
-                    maxFeePerGas: gasPrice.maxFeePerGas,
-                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-                }
-            ) as DataPointRegistry;
+                1000000,
+                gasPrice.deployParams
+            );
             await dataPointRegistry.waitForDeployment();
             contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
         }
@@ -94,12 +130,7 @@ describe("WTTP Protocol", function () {
             site = await WTTPSite.deploy(
                 dataPointRegistry.target,
                 tw3.address,
-                DEFAULT_HEADER
-                // ,
-                // {
-                //     maxFeePerGas: gasPrice.maxFeePerGas,
-                //     maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-                // }
+                gasPrice.deployParams
             );
             await site.waitForDeployment();
             contractManager.saveContract('wttpSite', await site.getAddress());
@@ -111,13 +142,12 @@ describe("WTTP Protocol", function () {
         const existingWTTPAddress = contractManager.getContractAddress('wttp');
         
         if (existingWTTPAddress) {
-            wttp = WTTP.attach(existingWTTPAddress) as WTTP;
+            wttp = WTTP.attach(existingWTTPAddress);
         } else {
             gasPrice = await estimateGas();
-            wttp = await WTTP.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            }) as WTTP;
+            wttp = await WTTP.deploy(
+                gasPrice.deployParams
+            ) as Contract;
             await wttp.waitForDeployment();
             contractManager.saveContract('wttp', await wttp.getAddress());
         }
@@ -205,10 +235,7 @@ describe("WTTP Protocol", function () {
                 ethers.hexlify("0x0101"),
                 tw3.address,
                 ethers.toUtf8Bytes(parts[0]),
-                {
-                    maxFeePerGas: gasPrice.maxFeePerGas,
-                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-                }
+                gasPrice.txParams
             );
             await tx.wait();
 
@@ -220,10 +247,7 @@ describe("WTTP Protocol", function () {
                     ethers.toUtf8Bytes(parts[i]),
                     i,
                     tw3.address,
-                    {
-                        maxFeePerGas: gasPrice.maxFeePerGas,
-                        maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-                    }
+                    gasPrice.txParams
                 );
                 await tx.wait();
             }

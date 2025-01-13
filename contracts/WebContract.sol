@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 /// @notice Manages role-based access control for the WTTP protocol
 /// @dev Extends OpenZeppelin's AccessControl with site-specific roles
 abstract contract WTTPPermissions is AccessControl {
-
     /// @notice Role identifier for contract owner
     bytes32 internal constant OWNER_ROLE = keccak256("OWNER_ROLE");
     /// @notice Role identifier for site administrators
@@ -145,6 +144,13 @@ struct HeaderInfo {
     bytes32 resourceAdmin;
 }
 
+/// @notice Error for HTTP errors
+/// @dev Used for error handling in HTTP responses
+/// @param code HTTP status code
+/// @param details Error details in nested JSON format
+/// @dev common parameters: reason, resource & suggestion, though custom parameters can be added
+error HTTPError(uint16 code, string details);
+
 /// @title WTTP Storage Contract
 /// @notice Manages web resource storage and access control
 /// @dev Core storage functionality for the WTTP protocol
@@ -160,14 +166,30 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         return address(DPR_);
     }
 
-    constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPPermissions(_owner) {
+    constructor(
+        address _dpr,
+        address _owner,
+        HeaderInfo memory _header
+    ) WTTPPermissions(_owner) {
         DPR_ = DataPointRegistry(_dpr);
         DPS_ = DPR_.DPS_();
 
         // If header is not provided, set default values
         if (_header.methods == 0) {
             _header = HeaderInfo({
-                cache: CacheControl(0, 0, false, false, false, false, false, 0, 0, false, false),
+                cache: CacheControl(
+                    0,
+                    0,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    0,
+                    0,
+                    false,
+                    false
+                ),
                 methods: 2913,
                 redirect: Redirect(0, ""),
                 resourceAdmin: bytes32(0)
@@ -177,6 +199,45 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         bytes32 headerPath = keccak256(abi.encode(_header));
         headerPaths["*"] = headerPath;
         headers[headerPath] = _header;
+    }
+
+    /// @notice Checks if a path is valid (non-empty)
+    /// @param _path Resource path to check
+    /// @return bool True if path is valid
+    function _isValidPath(string memory _path) internal pure returns (bool) {
+        return bytes(_path).length > 0;
+    }
+
+    function validPath(string memory _path) internal pure {
+        if (!_isValidPath(_path)) {
+            revert HTTPError(400, '{"reason": "Empty request path"}');
+        }
+    }
+
+    /// @notice Checks if a path can be modified
+    /// @param _path Resource path to check
+    modifier pathModifiable(string memory _path) {
+        validPath(_path);
+        if (_readHeader(_path).cache.immutableFlag) {
+            revert HTTPError(423, ""); // Locked - Resource is immutable
+        }
+        _;
+    }
+
+    modifier pathExists(string memory _path) {
+        validPath(_path);
+        if (resources[_path].length == 0) {
+            revert HTTPError(404, ""); // Not Found - Resource does not exist
+        }
+        _;
+    }
+
+    modifier pathDoesNotExist(string memory _path) {
+        validPath(_path);
+        if (resources[_path].length > 0) {
+            revert HTTPError(409, '{"reason": "Resource does not exist"}');
+        }
+        _;
     }
 
     /// @notice Checks if an address has admin rights for a specific resource
@@ -192,46 +253,22 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
 
     // Update the onlyAdmin modifier to check for resource-specific access
     modifier onlyResourceAdmin(string memory _path) {
-        require(
-            _isSiteAdmin(msg.sender) || _isResourceAdmin(_path, msg.sender),
-            "Caller is not a resource admin"
-        );
+        validPath(_path);
+        if (
+            !(_isSiteAdmin(msg.sender) || _isResourceAdmin(_path, msg.sender))
+        ) {
+            revert HTTPError(403, "");
+        }
         _;
     }
 
-    mapping(string path=> bytes32) private headerPaths;
+    mapping(string path => bytes32) private headerPaths;
     mapping(bytes32 header => HeaderInfo) private headers;
     mapping(string path => ResourceMetadata) private resourceMetadata;
     mapping(string path => bytes32[]) private resources;
     mapping(string path => string[]) private directories;
-    mapping(string path => mapping(bytes2 language => mapping(bytes2 charset => string variation))) private variations;
-
-    modifier pathModifiable(string memory _path) {
-        require(
-            _readHeader(_path).cache.immutableFlag == false,
-            "WS/pathModifiable: Path is immutable"
-        );
-        _;
-    }
-
-    modifier pathExists(string memory _path) {
-        require(bytes(_path).length > 0, "WS/pathExists: Invalid path");
-        require(
-            resources[_path].length > 0,
-            "WS/pathExists: Path does not exist"
-        );
-        _;
-    }
-
-    modifier pathDoesNotExist(string memory _path) {
-        bytes memory path = bytes(_path);
-        require(path.length > 0, "WS/pathDoesNotExist: Invalid path");
-        require(
-            resources[_path].length == 0,
-            "WS/pathDoesNotExist: Path already exists"
-        );
-        _;
-    }
+    mapping(string path => mapping(bytes2 language => mapping(bytes2 charset => string variation)))
+        private variations;
 
     // Public functions
     // defines a resource header
@@ -372,7 +409,6 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
         uint256 _chunk,
         address _publisher
     ) internal virtual pathExists(_path) returns (bytes32) {
-
         bytes32 firstAddress = resources[_path][0];
         DataPointStructure memory firstStructure = DPS_
             .readDataPoint(firstAddress)
@@ -415,7 +451,12 @@ abstract contract WTTPStorage is WTTPPermissions, ReentrancyGuard {
     event ResourceCreated(string path, uint256 size, address publisher);
     event ResourceUpdated(string path, uint256 chunk, address publisher);
     event ResourceDeleted(string path);
-    event VariationCreated(string path, bytes2 language, bytes2 charset, string variation);
+    event VariationCreated(
+        string path,
+        bytes2 language,
+        bytes2 charset,
+        string variation
+    );
 }
 
 /// @title HTTP Request Line Structure
@@ -482,29 +523,68 @@ struct PUTResponse {
 /// @notice Implements core WTTP protocol methods
 /// @dev Handles HTTP-like operations on the blockchain
 abstract contract WTTPSite is WTTPStorage {
+    constructor(
+        address _dpr,
+        address _owner,
+        HeaderInfo memory _header
+    ) WTTPStorage(_dpr, _owner, _header) {
+        emit SiteCreated(address(this), _dpr, _owner);
+    }
 
     /// @notice Current version of the WTTP protocol
     string public constant WTTP_VERSION = "WTTP/2.0";
 
-    /// @notice Checks WTTP version compatibility
+    /// @notice Checks if WTTP version is compatible
     /// @param _wttpVersion Protocol version to check
     /// @return bool True if version is compatible
-    function compatibleWTTPVersion(string memory _wttpVersion) public pure returns (bool) {
-        require(
+    function _isCompatibleVersion(
+        string memory _wttpVersion
+    ) internal pure returns (bool) {
+        return
             keccak256(abi.encode(_wttpVersion)) ==
-                keccak256(abi.encode(WTTP_VERSION)),
-            "WBM: Invalid WTTP version"
-        );
-        return true;
+            keccak256(abi.encode(WTTP_VERSION));
     }
 
-    constructor(address _dpr, address _owner, HeaderInfo memory _header) WTTPStorage(_dpr, _owner, _header) {
-        emit SiteCreated(address(this), _dpr, _owner, _header);
+    /// @notice Modifier that uses _isCompatibleVersion function
+    /// @param _wttpVersion Protocol version to check
+    modifier compatibleWTTPVersion(string memory _wttpVersion) {
+        if (!_isCompatibleVersion(_wttpVersion)) {
+            revert HTTPError(505, "");
+        }
+        _;
     }
-    
-    function _methodAllowed(string memory _path, Method _method) internal view returns (bool) {
-        uint16 methodBit = uint16(1 << uint8(_method)); // Create a bitmask for the method
-        return (_readHeader(_path).methods & methodBit != 0) || _isResourceAdmin(_path, msg.sender);
+
+    /// @notice Checks if HTTP method is allowed for given path
+    /// @param _path Resource path to check
+    /// @param _method HTTP method to check
+    /// @return bool True if method is allowed
+    function _methodAllowed(
+        string memory _path,
+        Method _method
+    ) internal view returns (bool) {
+        uint16 methodBit = uint16(1 << uint8(_method));
+        return (_readHeader(_path).methods & methodBit != 0);
+    }
+
+    /// @notice Modifier that uses _methodAllowed function
+    /// @param _path Resource path to check
+    /// @param _method HTTP method to check
+    modifier methodAllowed(string memory _path, Method _method) {
+        if (!_methodAllowed(_path, _method)) {
+            revert HTTPError(405, "");
+        }
+        _;
+    }
+
+    function _isRedirect(uint16 _code) internal pure returns (bool) {
+        // should be more specific in the future
+        if (_code >= 300 && _code < 320) {
+            return true;
+        } else if (_code == 0) {
+            return false;
+        }
+        // json formatted error is nested in the details field of the response in the handler
+        revert HTTPError(400, '{"reason": "Invalid redirect code"}');
     }
 
     /// @notice Handles HTTP HEAD requests
@@ -515,6 +595,8 @@ abstract contract WTTPSite is WTTPStorage {
     )
         public
         view
+        compatibleWTTPVersion(requestLine.protocol)
+        methodAllowed(requestLine.path, Method.HEAD)
         returns (HEADResponse memory head)
     {
         string memory _path = requestLine.path;
@@ -523,28 +605,8 @@ abstract contract WTTPSite is WTTPStorage {
         bytes32[] memory _dataPoints = _readLocation(_path);
         head.etag = keccak256(abi.encode(_dataPoints));
 
-        if (!compatibleWTTPVersion(requestLine.protocol)) {
-            head.responseLine = ResponseLine({
-                protocol: requestLine.protocol,
-                code: 515
-            });
-        }
-        // 400 codes
-        else if (!_methodAllowed(_path, Method.HEAD)) {
-            head.responseLine = ResponseLine({
-                protocol: requestLine.protocol,
-                code: 405
-            });
-        }
-        // not needed because it's addressed in LOCATE
-        // else if (_dataPoints.length == 0) {
-        //     head.responseLine = ResponseLine({
-        //         protocol: requestLine.protocol,
-        //         code: 404
-        //     });
-        // } 
         // 300 codes
-        else if (head.headerInfo.redirect.code != 0) {
+        if (_isRedirect(head.headerInfo.redirect.code)) {
             head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
                 code: head.headerInfo.redirect.code
@@ -552,7 +614,6 @@ abstract contract WTTPSite is WTTPStorage {
         }
         // 200 codes
         else if (head.metadata.size == 0) {
-            head.dataStructure = DPS_.dataPointInfo(_dataPoints[0]);
             head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
                 code: 204
@@ -576,25 +637,22 @@ abstract contract WTTPSite is WTTPStorage {
     )
         public
         view
+        compatibleWTTPVersion(requestLine.protocol)
+        pathExists(requestLine.path)
+        methodAllowed(requestLine.path, Method.LOCATE)
         returns (LOCATEResponse memory locateResponse)
     {
         string memory _path = requestLine.path;
         locateResponse.head = HEAD(requestLine);
         locateResponse.dpsAddress = address(DPS_);
 
-        if (!_methodAllowed(_path, Method.LOCATE)) {
+        if (locateResponse.head.metadata.size > 0) {
+            locateResponse.dataPoints = _readLocation(_path);
+        } else {
             locateResponse.head.responseLine = ResponseLine({
                 protocol: requestLine.protocol,
-                code: 405
+                code: 204
             });
-        } else {
-            locateResponse.dataPoints = _readLocation(_path);
-            if (locateResponse.dataPoints.length == 0) {
-                locateResponse.head.responseLine = ResponseLine({
-                    protocol: requestLine.protocol,
-                    code: 404
-                });
-            }
         }
     }
 
@@ -608,21 +666,8 @@ abstract contract WTTPSite is WTTPStorage {
         HeaderInfo memory _header
     ) public returns (HEADResponse memory defineResponse) {
         string memory _path = _requestLine.path;
-
-        if (!_isResourceAdmin(_path, msg.sender)) {
-            defineResponse.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 403
-            });
-        } else if (!_methodAllowed(_path, Method.DEFINE)) {
-            defineResponse.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 405
-            });
-        } else {
-            _writeHeader(_path, _header);
-            defineResponse = HEAD(_requestLine);
-        }
+        _writeHeader(_path, _header);
+        defineResponse = HEAD(_requestLine);
 
         emit DEFINESuccess(msg.sender, _requestLine, defineResponse);
     }
@@ -664,35 +709,27 @@ abstract contract WTTPSite is WTTPStorage {
         bytes2 _location,
         address _publisher,
         bytes memory _data
-    ) public payable returns (PUTResponse memory putResponse) {
+    )
+        public
+        payable
+        onlyResourceAdmin(_requestLine.path)
+        returns (PUTResponse memory putResponse)
+    {
         string memory _path = _requestLine.path;
 
-        if (!_isResourceAdmin(_path, msg.sender)) { 
-            putResponse.head.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 403
-            });
-        } else if (!_methodAllowed(_path, Method.PUT)) {
-            putResponse.head.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 405
-            });
-        } else {
-            putResponse.dataPointAddress =
-                _createResource(
-                _path,
-                _mimeType,
-                _charset,
-                _location,
-                _publisher,
-                _data
-            );
-            putResponse.head = HEAD(_requestLine);
-            putResponse.head.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 201
-            });
-        }
+        putResponse.dataPointAddress = _createResource(
+            _path,
+            _mimeType,
+            _charset,
+            _location,
+            _publisher,
+            _data
+        );
+        putResponse.head = HEAD(_requestLine);
+        putResponse.head.responseLine = ResponseLine({
+            protocol: _requestLine.protocol,
+            code: 201
+        });
 
         emit PUTSuccess(msg.sender, _requestLine, putResponse);
     }
@@ -709,23 +746,22 @@ abstract contract WTTPSite is WTTPStorage {
         bytes memory _data,
         uint256 _chunk,
         address _publisher
-    ) public payable returns (PUTResponse memory patchResponse) {
+    )
+        public
+        payable
+        compatibleWTTPVersion(_requestLine.protocol)
+        onlyResourceAdmin(_requestLine.path)
+        returns (PUTResponse memory patchResponse)
+    {
         string memory _path = _requestLine.path;
-
-        if (!_isResourceAdmin(_path, msg.sender)) {
-            patchResponse.head.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 403
-            });
-        } else if (!_methodAllowed(_path, Method.PATCH)) {
-            patchResponse.head.responseLine = ResponseLine({
-                protocol: _requestLine.protocol,
-                code: 405
-            });
-        } else {
-            patchResponse.dataPointAddress = _updateResource(_path, _data, _chunk, _publisher);
-            patchResponse.head = HEAD(_requestLine);
-        }
+    
+        patchResponse.dataPointAddress = _updateResource(
+            _path,
+            _data,
+            _chunk,
+            _publisher
+        );
+        patchResponse.head = HEAD(_requestLine);
 
         emit PATCHSuccess(msg.sender, _requestLine, patchResponse);
     }
@@ -735,30 +771,49 @@ abstract contract WTTPSite is WTTPStorage {
     /// @param siteAddress Address of the site
     /// @param dpr Address of the data point registry
     /// @param owner Address of the site owner
-    /// @param header Header information for the site
-    event SiteCreated(address indexed siteAddress, address indexed dpr, address indexed owner, HeaderInfo header);
+    event SiteCreated(
+        address indexed siteAddress,
+        address indexed dpr,
+        address indexed owner
+    );
 
     /// @notice Emitted when a PATCH request succeeds
     /// @param publisher Address of content publisher
     /// @param requestLine Original request information
     /// @param patchResponse Response details
-    event PATCHSuccess(address indexed publisher, RequestLine requestLine, PUTResponse patchResponse);
+    event PATCHSuccess(
+        address indexed publisher,
+        RequestLine requestLine,
+        PUTResponse patchResponse
+    );
 
     /// @notice Emitted when a PUT request succeeds
     /// @param publisher Address of content publisher
     /// @param requestLine Original request information
     /// @param putResponse Response details
-    event PUTSuccess(address indexed publisher, RequestLine requestLine, PUTResponse putResponse);
+    event PUTSuccess(
+        address indexed publisher,
+        RequestLine requestLine,
+        PUTResponse putResponse
+    );
 
     /// @notice Emitted when a DELETE request succeeds
     /// @param publisher Address of content publisher
     /// @param requestLine Original request information
     /// @param deleteResponse Response details
-    event DELETESuccess(address indexed publisher, RequestLine requestLine, HEADResponse deleteResponse);
+    event DELETESuccess(
+        address indexed publisher,
+        RequestLine requestLine,
+        HEADResponse deleteResponse
+    );
 
     /// @notice Emitted when a DEFINE request succeeds
     /// @param publisher Address of content publisher
     /// @param requestLine Original request information
     /// @param defineResponse Response details
-    event DEFINESuccess(address indexed publisher, RequestLine requestLine, HEADResponse defineResponse);
+    event DEFINESuccess(
+        address indexed publisher,
+        RequestLine requestLine,
+        HEADResponse defineResponse
+    );
 }

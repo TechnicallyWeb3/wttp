@@ -48,7 +48,7 @@ export class ProviderManager {
      */
     public getRpcUrl(network: SupportedNetworks) {
         // TODO: Create a RPC URL manager to rank the RPC URLs so the best one is always at index 0
-        const rpcUrl = this.config.networks[network].rpcUrls?.[0];
+        const rpcUrl = this.config.networks[network]?.rpcUrls?.[0];
         if (!rpcUrl) {
             throw new Error(`No RPC URL found for network ${network}`);
         }
@@ -61,9 +61,9 @@ export class ProviderManager {
      * @returns Provider instance for the network
      */
     public getProvider(network: SupportedNetworks): Provider {
-        console.log(`Getting provider for ${network} network`);
-        console.log(`RPC URL: ${this.getRpcUrl(network)}`);
-        console.log(`Chain ID: ${this.config.networks[network].chainId}`);
+        // console.log(`Getting provider for ${network} network`);
+        // console.log(`RPC URL: ${this.getRpcUrl(network)}`);
+        // console.log(`Chain ID: ${this.config.networks[network].chainId}`);
         return new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config.networks[network].chainId);
     }
 }

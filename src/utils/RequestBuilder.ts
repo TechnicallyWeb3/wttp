@@ -28,7 +28,7 @@ export class RequestBuilder {
      * ```
      */
     async build(options: RequestOptions) {
-        console.log("Building request...");
+        // console.log("Building request...");
         // console.log(options);
         const requestLine: RequestLine = {
             protocol: "WTTP/2.0",

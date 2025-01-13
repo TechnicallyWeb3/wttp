@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ethers } from 'ethers';
+import { ethers, Contract } from 'ethers';
 import { WTTPHandler } from '../src/WTTPHandler';
 import { DataPointStorage, MyFirstWTTPSite__factory, WTTP, WTTPSite } from '../typechain-types';
 import { Method } from '../src/types/types';
@@ -8,11 +8,11 @@ import {
     CHARSET_STRINGS, 
     LANGUAGE_STRINGS, 
     LOCATION_STRINGS, 
-    DEFAULT_HEADER
+    DEFAULT_HEADER,
+    SupportedNetworks
 } from '../src/types/constants';
 import hre from 'hardhat';
 import { contractManager } from '../lib/contractManager';
-import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 
 describe('WTTPHandler', () => {
     let handler: WTTPHandler;
@@ -26,7 +26,47 @@ describe('WTTPHandler', () => {
     let gasPrice: any;
 
     async function estimateGas() {
-        return await hre.ethers.provider.getFeeData();
+        const feeData = await hre.ethers.provider.getFeeData();
+        
+        // Network-specific default gas prices (in gwei)
+        const defaultGasPrices = {
+            'polygon': BigInt(40000000000),    // 40 gwei
+            'arbitrum': BigInt(250000000),     // 0.25 gwei
+            'optimism': BigInt(150000),        // 0.00015 gwei
+            'base': BigInt(150000),            // 0.00015 gwei
+            'avalanche': BigInt(15000000),     // 0.015 gwei
+            'fantom': BigInt(100000000),       // 0.1 gwei
+            'hardhat': BigInt(40000000000),    // 40 gwei (fallback)
+        };
+
+        const networkName = hre.network.name.toLowerCase();
+        const defaultGasPrice = defaultGasPrices[networkName] || defaultGasPrices['hardhat'];
+
+        // For EIP-1559 compatible networks
+        if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+            return {
+                deployParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                },
+                txParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                    gasLimit: BigInt(2000000), // Reasonable gas limit for transactions
+                }
+            };
+        }
+
+        // For legacy networks
+        return {
+            deployParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+            },
+            txParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+                gasLimit: BigInt(2000000),
+            }
+        };
     }
 
     // Helper function to create test content
@@ -39,10 +79,7 @@ describe('WTTPHandler', () => {
             ethers.hexlify("0x0101"), // datapoint/chunk
             tw3.address,
             ethers.toUtf8Bytes(content),
-            { 
-                maxFeePerGas: gasPrice.maxFeePerGas, 
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas 
-            }
+            gasPrice.txParams
         );
         await tx.wait();
     }
@@ -57,13 +94,12 @@ describe('WTTPHandler', () => {
         
         if (existingWTTPAddress) {
             console.log("Loading existing WTTP at:", existingWTTPAddress);
-            wttp = WTTP.attach(existingWTTPAddress) as WTTP;
+            wttp = WTTP.attach(existingWTTPAddress) as Contract;
         } else {
             gasPrice = await estimateGas();
-            wttp = await WTTP.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            }) as WTTP;
+            wttp = await WTTP.deploy(
+                gasPrice.deployParams
+            );
             await wttp.waitForDeployment();
             contractManager.saveContract('wttp', await wttp.getAddress());
             console.log("WTTP deployed at:", await wttp.getAddress());
@@ -78,10 +114,9 @@ describe('WTTPHandler', () => {
             dataPointStorage = DataPointStorage.attach(existingDPSAddress);
         } else {
             gasPrice = await estimateGas();
-            dataPointStorage = await DataPointStorage.deploy({
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            });
+            dataPointStorage = await DataPointStorage.deploy(
+                gasPrice.deployParams
+            );
             await dataPointStorage.waitForDeployment();
             contractManager.saveContract('dataPointStorage', await dataPointStorage.getAddress());
             console.log("DataPointStorage deployed at:", await dataPointStorage.getAddress());
@@ -95,10 +130,12 @@ describe('WTTPHandler', () => {
             dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
         } else {
             gasPrice = await estimateGas();
-            dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address, {
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            });
+            dataPointRegistry = await DataPointRegistry.deploy(
+                dataPointStorage.target, 
+                tw3.address,
+                1000000,
+                gasPrice.deployParams
+            );
             await dataPointRegistry.waitForDeployment();
             contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
             console.log("DataPointRegistry deployed at:", await dataPointRegistry.getAddress());
@@ -112,14 +149,18 @@ describe('WTTPHandler', () => {
             site = WTTPSite.attach(existingSiteAddress);
         } else {
             gasPrice = await estimateGas();
-            site = await WTTPSite.deploy(dataPointRegistry.target, tw3.address, DEFAULT_HEADER);
+            site = await WTTPSite.deploy(
+                dataPointRegistry.target,
+                tw3.address,
+                gasPrice.deployParams
+            );
             await site.waitForDeployment();
             contractManager.saveContract('wttpSite', await site.getAddress());
             console.log("WTTPSite deployed at:", await site.getAddress());
         }
 
         // Initialize handler with deployed contracts
-        handler = new WTTPHandler(wttp.target, tw3, hre.network.name);
+        handler = new WTTPHandler(wttp.target, tw3, hre.network.name as SupportedNetworks);
     });
 
     describe('Header Parsing', () => {
@@ -370,6 +411,8 @@ describe('WTTPHandler', () => {
         it('should handle 404 for non-existent resources', async function() {
             const response = await handler.fetch(`wttp://${site.target}/nonexistent.html`);
             expect(response.status).to.equal(404);
+            // console.log(response);
+            // console.log(`Body: ${await response.text()}`);
         });
     });
 
@@ -377,7 +420,7 @@ describe('WTTPHandler', () => {
         let handler: WTTPHandler;
 
         beforeEach(async () => {
-            handler = new WTTPHandler(wttp.target, tw3);
+            handler = new WTTPHandler(wttp.target, tw3, hre.network.name as SupportedNetworks);
         });
 
         it('should create a multipart file using PUT and PATCH', async function() {
@@ -388,7 +431,7 @@ describe('WTTPHandler', () => {
             const response1 = await handler.fetch(`wttp://${site.target}/multipart-test.html`, {
                 method: Method.PUT,
                 headers: {
-                    'Content-Type': 'text/html',
+                    'Content-Type': 'text/html; charset=utf-8',
                     'Content-Location': 'datapoint/chunk'
                 },
                 body: part1
@@ -434,17 +477,18 @@ describe('WTTPHandler', () => {
     });
 
     describe('royalty handling', () => {
-        let site1: WTTPSite;
-        let site2: WTTPSite;
+        let site1: Contract;
+        let site2: Contract;
 
         async function setupSites() {
 
             const site1Factory = await hre.ethers.getContractFactory("MyFirstWTTPSite", user1);
 
+            gasPrice = await estimateGas();
             site1 = await site1Factory.deploy(
                 dataPointRegistry.target, 
-                user1.address, 
-                DEFAULT_HEADER
+                user1.address,
+                gasPrice.deployParams
             );
             
             gasPrice = await estimateGas();
@@ -452,7 +496,7 @@ describe('WTTPHandler', () => {
             site2 = await site2Factory.deploy(
                 dataPointRegistry.target, 
                 user2.address, 
-                DEFAULT_HEADER
+                gasPrice.deployParams
             );
 
             await site1.waitForDeployment();

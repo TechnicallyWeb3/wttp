@@ -21,7 +21,9 @@
   "include": [
     "src/**/*",
     "contracts/**/*",
-    "typechain-types/**/*"
+    "typechain-types/**/*",
+    // "scripts/**/*",
   ],
-  "exclude": ["node_modules", "lib", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": ["node_modules", "lib", "dist", "**/*.test.ts", "**/*.spec.ts"],
+  // "files": ["./hardhat.config.ts"]
 }

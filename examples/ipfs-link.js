@@ -7,7 +7,8 @@ dotenv.config();
 // const site = "0x093C65296747E07196f7Fc1dF78A5Cf460Ba2072:sepolia";
 // const site = "0xaEEa3DB3443882D882d033596adb927cc6EfB50a:sepolia";
 // const site = "0xC92B7372D4048c48C6B03958b3f9D204B034aF87:sepolia";
-const site = "0x70f190FdA28dBE4934D27c931ba19e5E9b965273";
+// const site = "0x70f190FdA28dBE4934D27c931ba19e5E9b965273";
+const site = "0x36199Defab23C24E265C7DFFad47E8d9E821Fd23";
 
 const signer = new Wallet(process.env.PRIVATE_KEY); // use private key from .env
 

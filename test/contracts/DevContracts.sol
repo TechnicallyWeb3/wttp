@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.20;
 
-import "../WebStorage.sol";
-import "../WebContract.sol";
+import "./WebStorage.sol";
+import "./WebContract.sol";
 
 contract Dev_DataPointRegistry is DataPointRegistry {
     constructor(address _dps, address _owner) DataPointRegistry(_dps, _owner) {}

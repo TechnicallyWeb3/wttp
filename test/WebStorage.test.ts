@@ -16,10 +16,46 @@ describe("WebStorage", function () {
 
     async function estimateGas() {
         const feeData = await hre.ethers.provider.getFeeData();
-        const maxFeePerGas = feeData.maxFeePerGas ? feeData.maxFeePerGas : BigInt(40000000000);
-        const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ? feeData.maxPriorityFeePerGas : BigInt(2000000000);
         
-        return { maxFeePerGas, maxPriorityFeePerGas };
+        // Network-specific default gas prices (in gwei)
+        const defaultGasPrices = {
+            'polygon': BigInt(40000000000),    // 40 gwei
+            'arbitrum': BigInt(250000000),     // 0.25 gwei
+            'optimism': BigInt(150000),        // 0.00015 gwei
+            'base': BigInt(150000),            // 0.00015 gwei
+            'avalanche': BigInt(15000000),     // 0.015 gwei
+            'fantom': BigInt(100000000),       // 0.1 gwei
+            'hardhat': BigInt(40000000000),    // 40 gwei (fallback)
+        };
+
+        const networkName = hre.network.name.toLowerCase();
+        const defaultGasPrice = defaultGasPrices[networkName] || defaultGasPrices['hardhat'];
+
+        // For EIP-1559 compatible networks
+        if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+            return {
+                deployParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                },
+                txParams: {
+                    maxFeePerGas: feeData.maxFeePerGas,
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                    gasLimit: BigInt(2000000), // Reasonable gas limit for transactions
+                }
+            };
+        }
+
+        // For legacy networks
+        return {
+            deployParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+            },
+            txParams: {
+                gasPrice: feeData.gasPrice || defaultGasPrice,
+                gasLimit: BigInt(2000000),
+            }
+        };
     }
 
     before(async function () {
@@ -29,10 +65,10 @@ describe("WebStorage", function () {
         // Deploy StatusMap
         const StatusMap = await hre.ethers.getContractFactory("StatusMap");
         
-        gasPrice = await estimateGas();
-        statusMap = await StatusMap.deploy({
-            ...gasPrice
-        });
+        const gas = await estimateGas();
+        statusMap = await StatusMap.deploy(
+            gas.deployParams
+        );
         await statusMap.waitForDeployment();
         console.log("StatusMap deployed at:", await statusMap.getAddress());
 
@@ -40,9 +76,9 @@ describe("WebStorage", function () {
         const TypeMap = await hre.ethers.getContractFactory("TypeMap");
 
         gasPrice = await estimateGas();
-        typeMap = await TypeMap.deploy({
-            ...gasPrice
-        });
+        typeMap = await TypeMap.deploy(
+            gasPrice.deployParams
+        );
         await typeMap.waitForDeployment();
         console.log("TypeMap deployed at:", await typeMap.getAddress());
 
@@ -55,9 +91,9 @@ describe("WebStorage", function () {
             dataPointStorage = DataPointStorage.attach(existingDPSAddress);
         } else {
             gasPrice = await estimateGas();
-            dataPointStorage = await DataPointStorage.deploy({
-                ...gasPrice
-            });
+            dataPointStorage = await DataPointStorage.deploy(
+                gasPrice.deployParams
+            );
             await dataPointStorage.waitForDeployment();
             contractManager.saveContract('dataPointStorage', await dataPointStorage.getAddress());
             console.log("DataPointStorage deployed at:", await dataPointStorage.getAddress());
@@ -75,9 +111,8 @@ describe("WebStorage", function () {
             dataPointRegistry = await DataPointRegistry.deploy(
                 await dataPointStorage.getAddress(),
                 tw3.address,
-                {
-                    ...gasPrice
-                }
+                1000000,
+                gasPrice.deployParams
             );
             await dataPointRegistry.waitForDeployment();
             contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
@@ -92,24 +127,25 @@ describe("WebStorage", function () {
         });
 
         it("Should allow owner to add new status codes", async function () {
-            gasPrice = await estimateGas();
+            const gas = await estimateGas();
             const randomStatus = Math.floor(Math.random() * 10000);
-            const tx = await statusMap.setStatus(randomStatus, `Custom Error ${randomStatus}`, {
-                ...gasPrice
-            });
+            const randomNumber = Math.random();
+            const tx = await statusMap.setStatus(
+                randomStatus, 
+                `Custom Error ${randomNumber}`, 
+                gas.txParams
+            );
             await tx.wait();
 
-            expect(await statusMap.getReasonPhrase(randomStatus)).to.equal(`Custom Error ${randomStatus}`);
-            expect(await statusMap.getStatusCode(`Custom Error ${randomStatus}`)).to.equal(randomStatus);
+            expect(await statusMap.getReasonPhrase(randomStatus)).to.equal(`Custom Error ${randomNumber}`);
+            expect(await statusMap.getStatusCode(`Custom Error ${randomNumber}`)).to.equal(randomStatus);
         });
 
         it("Should not allow non-owner to add new status codes", async function () {
-            gasPrice = await estimateGas();
+            const gas = await estimateGas();
             const randomStatus = Math.floor(Math.random() * 10000);
             await expect(
-                statusMap.connect(publisher).setStatus(randomStatus, `Custom Error ${randomStatus}`, {
-                    ...gasPrice
-                })
+                statusMap.connect(publisher).setStatus(randomStatus, `Custom Error ${randomStatus}`, gas.txParams)
             ).to.be.reverted;
         });
     });
@@ -125,14 +161,13 @@ describe("WebStorage", function () {
 
         it("Should manage custom types", async function () {
             const randomType = Math.floor(Math.random() * 10000);
-            gasPrice = await estimateGas();
-            const tx = await typeMap.setType(0, `custom/type${randomType}`, `0x${randomType.toString(16).padStart(4, '0')}`, {
-                ...gasPrice
-            });
+            const randomNumber = Math.random();
+            const gas = await estimateGas();
+            const tx = await typeMap.setType(0, `custom/type${randomNumber}`, `0x${randomType.toString(16).padStart(4, '0')}`, gas.txParams);
             await tx.wait();
 
-            expect(await typeMap.getTypeBytes(0, `custom/type${randomType}`)).to.equal(`0x${randomType.toString(16).padStart(4, '0')}`);
-            expect(await typeMap.getTypeString(0, `0x${randomType.toString(16).padStart(4, '0')}`)).to.equal(`custom/type${randomType}`);
+            expect(await typeMap.getTypeBytes(0, `custom/type${randomNumber}`)).to.equal(`0x${randomType.toString(16).padStart(4, '0')}`);
+            expect(await typeMap.getTypeString(0, `0x${randomType.toString(16).padStart(4, '0')}`)).to.equal(`custom/type${randomNumber}`);
         });
     });
 
@@ -147,10 +182,8 @@ describe("WebStorage", function () {
                 data: ethers.toUtf8Bytes("Hello, World!"),
             };
 
-            gasPrice = await estimateGas();
-            const tx = await dataPointStorage.writeDataPoint(dataPoint, {
-                ...gasPrice
-            });
+            const gas = await estimateGas();
+            const tx = await dataPointStorage.writeDataPoint(dataPoint, gas.txParams);
             await tx.wait();
 
             const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
@@ -165,11 +198,11 @@ describe("WebStorage", function () {
             this.timeout(60000);
 
             // Create test data
-            const chunk = ethers.toUtf8Bytes(`Should handle royalties correctly`);
+            const chunk = ethers.toUtf8Bytes(`Should handle royalties correctly ${Math.random()}`);
             
             const dataPoint = {
                 structure: {
-                    mimeType: await typeMap.getTypeBytes(0, "application/octet-stream"),
+                    mimeType: await typeMap.getTypeBytes(0, "text/plain"),
                     charset: await typeMap.getTypeBytes(1, "utf-8"),
                     location: await typeMap.getTypeBytes(2, "datapoint/chunk"),
                 },
@@ -178,17 +211,17 @@ describe("WebStorage", function () {
 
             
             const dataPointAddress = await dataPointStorage.calculateAddress(dataPoint);
-            const royaltyAmount = await dataPointRegistry.getRoyalty(dataPointAddress);
+            const royaltyAmount: bigint = await dataPointRegistry.getRoyalty(dataPointAddress);
             // console.log(`Royalty amount: ${royaltyAmount}`);
 
             // Publisher writes
-            gasPrice = await estimateGas();
+            const gasPrice = await estimateGas();
             let tx = await dataPointRegistry.connect(publisher).writeDataPoint(
                 dataPoint, 
                 publisher.address,
                 {
                     value: royaltyAmount,
-                    ...gasPrice
+                    ...gasPrice.txParams
                 }
             );
             await tx.wait();
@@ -197,17 +230,17 @@ describe("WebStorage", function () {
             const tw3InitialRoyaltyBalance = await dataPointRegistry.royaltyBalance(tw3.address);
 
             const dataPointAddress2 = await dataPointStorage.calculateAddress(dataPoint);
-            const royaltyAmount2 = await dataPointRegistry.getRoyalty(dataPointAddress2);
+            const royaltyAmount2: bigint = await dataPointRegistry.getRoyalty(dataPointAddress2);
             // console.log(`Royalty amount: ${royaltyAmount2}`);
             
             // Dev writes with royalty
-            gasPrice = await estimateGas();
+            const gas = await estimateGas();
             tx = await dataPointRegistry.connect(dev).writeDataPoint(
                 dataPoint,
                 ethers.ZeroAddress,
                 {
                     value: royaltyAmount2,
-                    ...gasPrice
+                    ...gas.txParams
                 }
             );
             await tx.wait();
@@ -215,8 +248,12 @@ describe("WebStorage", function () {
             // Verify balances
             const publisherBalance = await dataPointRegistry.royaltyBalance(publisher.address);
             const tw3Balance = await dataPointRegistry.royaltyBalance(tw3.address);
-            expect(tw3Balance - tw3InitialRoyaltyBalance).to.equal(royaltyAmount2 / 10n);
-            expect(publisherBalance - publisherInitialRoyaltyBalance).to.equal(royaltyAmount2 / 10n * 9n);
+
+            const updatedRoyaltyAmount: bigint = await dataPointRegistry.getRoyalty(dataPointAddress) - royaltyAmount;
+            const updatedRoyaltyAmount2: bigint = await dataPointRegistry.getRoyalty(dataPointAddress2) - royaltyAmount2;
+            
+            expect(tw3Balance - tw3InitialRoyaltyBalance).to.equal(updatedRoyaltyAmount2 / 10n);
+            expect(publisherBalance - publisherInitialRoyaltyBalance).to.equal(updatedRoyaltyAmount / 10n * 9n);
         });
     });
 }); 

@@ -16,13 +16,17 @@ export class ResponseBuilder {
     private buildHeaders(headResponse: HEADResponse): Headers {
         const headers = new Headers();
 
+        if (!headResponse.metadata) {
+            throw new Error("Invalid head response");
+        }
+
         // console.log(headResponse);
 
         // Content Type and Charset
-        if (headResponse.dataStructure.mimeType && headResponse.dataStructure.charset) {
-            headers.set('Content-Type', 
-                `${headResponse.dataStructure.mimeType}; charset=${headResponse.dataStructure.charset}`);
-        }
+        let contentType: string = headResponse.dataStructure.mimeType ? `${headResponse.dataStructure.mimeType}` : 'text/plain';
+        let charset: string = headResponse.dataStructure.charset ? `; charset=${headResponse.dataStructure.charset}` : '';
+        contentType += charset;
+        headers.set('Content-Type', contentType);
 
         // Content Length
         if (headResponse.metadata.size > 0) {
@@ -35,13 +39,13 @@ export class ResponseBuilder {
         }
 
         // Last Modified
-        if (headResponse.metadata.modifiedDate > 0) {
+        if (headResponse.metadata.modifiedDate) {
             headers.set('Last-Modified', new Date(Number(headResponse.metadata.modifiedDate) * 1000).toUTCString());
         }
 
         // Cache Control
         const cacheDirectives: string[] = [];
-        const cache = headResponse.headerInfo.cache;
+        const cache = headResponse.headerInfo?.cache;
         
         if (cache.maxAge > 0) cacheDirectives.push(`max-age=${cache.maxAge}`);
         if (cache.sMaxage > 0) cacheDirectives.push(`s-maxage=${cache.sMaxage}`);
@@ -97,14 +101,14 @@ export class ResponseBuilder {
         const { head } = rawResponse;
         let body = rawResponse.body;
 
-        console.log("Building response...");
-        console.log(`Request:`);
-        console.log(request);
-        console.log(`Raw Response:`);
-        console.log(rawResponse);
+        // console.log("Building response...");
+        // console.log(`Request:`);
+        // console.log(request);
+        // console.log(`Raw Response:`);
+        // console.log(rawResponse);
         // Use the new buildHeaders method
-        const headers = head ? this.buildHeaders(head) : new Headers();
-        let statusCode = head ? head.responseLine.code : 500;
+        const headers = head.metadata ? this.buildHeaders(head) : new Headers();
+        let statusCode = head.responseLine ? head.responseLine.code : 500;
 
         switch (request.method) {
             case Method.GET:
