@@ -50,7 +50,7 @@ export class ProviderManager {
         // TODO: Create a RPC URL manager to rank the RPC URLs so the best one is always at index 0
         const rpcUrl = this.config.networks[network]?.rpcUrls?.[0];
         if (!rpcUrl) {
-            throw new Error(`No RPC URL found for network ${network}`);
+            throw new Error(`Unsupported network: No RPC URL found for network ${network}`);
         }
         return rpcUrl;
     }
@@ -61,9 +61,20 @@ export class ProviderManager {
      * @returns Provider instance for the network
      */
     public getProvider(network: SupportedNetworks): Provider {
-        // console.log(`Getting provider for ${network} network`);
-        // console.log(`RPC URL: ${this.getRpcUrl(network)}`);
-        // console.log(`Chain ID: ${this.config.networks[network].chainId}`);
-        return new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config.networks[network].chainId);
+        console.log(`Getting provider for network: '${network}'`);
+        // console.log(`Network type:`, typeof network);
+        // console.log(`Available networks:`, Object.keys(this.config.networks));
+        console.log(`Network exists?`, this.config.networks[network] ? 'Yes' : 'No');
+        
+        if (!this.config.networks[network]) {
+            const error = new Error(`Unsupported network: No configuration found for network ${network}`);
+            // console.log('Throwing error:', error);
+            throw error;
+        }
+        
+        if (network === 'localhost') {
+            this.config.networks[network].chainId = 1337;
+        }
+        return new ethers.JsonRpcProvider(this.getRpcUrl(network), {chainId: this.config.networks[network].chainId, name: network});
     }
 }

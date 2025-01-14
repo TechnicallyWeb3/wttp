@@ -23,7 +23,7 @@ const accountsCount = 3;
 
 const defaultAccount = [
   process.env.PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cdb9d98f34",  // Add a default testing private key
-  process.env.DPs_DEPLOYER || "",
+  process.env.DPS_DEPLOYER || "",
   process.env.DPR_DEPLOYER || "",
   process.env.WTTP_DEPLOYER || "",
 ].filter(key => key !== "");  // Remove empty strings

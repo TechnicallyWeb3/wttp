@@ -1,14 +1,14 @@
 import { expect } from 'chai';
 import { ethers, Contract } from 'ethers';
 import { WTTPHandler } from '../src/WTTPHandler';
-import { DataPointStorage, MyFirstWTTPSite__factory, WTTP, WTTPSite } from '../typechain-types';
+// import { DataPointStorage, MyFirstWTTPSite__factory, WTTP, WTTPSite } from '../typechain-types';
 import { Method } from '../src/types/types';
 import { 
     MIME_TYPE_STRINGS, 
     CHARSET_STRINGS, 
     LANGUAGE_STRINGS, 
     LOCATION_STRINGS, 
-    DEFAULT_HEADER,
+    // DEFAULT_HEADER,
     SupportedNetworks
 } from '../src/types/constants';
 import hre from 'hardhat';
@@ -155,7 +155,6 @@ describe('WTTPHandler', () => {
                 gasPrice.deployParams
             );
             await site.waitForDeployment();
-            contractManager.saveContract('wttpSite', await site.getAddress());
             console.log("WTTPSite deployed at:", await site.getAddress());
         }
 
@@ -412,7 +411,7 @@ describe('WTTPHandler', () => {
             const response = await handler.fetch(`wttp://${site.target}/nonexistent.html`);
             expect(response.status).to.equal(404);
             // console.log(response);
-            // console.log(`Body: ${await response.text()}`);
+            console.log(`Body: ${await response.text()}`);
         });
     });
 
@@ -557,4 +556,181 @@ describe('WTTPHandler', () => {
             expect(await getResponse2.text()).to.equal(content);
         });
     });
+    describe('Multi-chain Operations', () => {
+        let handler: WTTPHandler;
+        let hardhatSite: any;
+        let sepoliaSite: any;
+        let tw3: any;
+
+        before(async function() {
+            this.timeout(60000);
+
+            // Log initial state
+            console.log("Initial network:", hre.network.name);
+            console.log("Initial provider URL:", hre.network.config.url);
+
+            // Store original network name
+            const originalNetwork = hre.network.name;
+            console.log("Starting on network:", originalNetwork);
+
+            // Deploy on current network first
+            [tw3] = await hre.ethers.getSigners();
+            console.log("Signer address:", await tw3.getAddress());
+
+            // Get existing infrastructure contracts
+            const existingWTTPAddress = contractManager.getContractAddress('wttp');
+            const existingDPRAddress = contractManager.getContractAddress('dataPointRegistry');
+            
+            if (!existingWTTPAddress || !existingDPRAddress) {
+                throw new Error('Required infrastructure contracts not found');
+            }
+    
+            // Deploy test sites
+            const WTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
+            
+            gasPrice = await estimateGas();
+            hardhatSite = await WTTPSite.deploy(
+                existingDPRAddress,
+                tw3.address,
+                gasPrice.deployParams
+            );
+            await hardhatSite.waitForDeployment();
+            console.log(`${originalNetwork} site deployed at:`, await hardhatSite.getAddress());
+
+            // Switch to Sepolia and deploy
+            try {
+                // Log pre-switch state
+                console.log("\nAttempting network switch...");
+                console.log("Contract exists on current network:", await hre.ethers.provider.getCode(hardhatSite.target) !== "0x");
+                // Try different ways to access the function
+                if (typeof hre.switchNetwork === 'function') {
+                    await hre.switchNetwork('sepolia');
+                } else if (typeof hre.network.provider.request === 'function') {
+                    await hre.network.provider.request({
+                        method: "hardhat_changeNetwork",
+                        params: [{ name: "sepolia" }]
+                    });
+                } else {
+                    throw new Error("No network switching method available");
+                }
+                
+                // Log post-switch state
+                console.log("\nAfter switch:");
+                console.log("Network:", hre.network.name);
+                console.log("ChainId:", (await hre.ethers.provider.getNetwork()).chainId);
+
+                const sepoliaWTTPSite = await hre.ethers.getContractFactory("MyFirstWTTPSite");
+                gasPrice = await estimateGas();
+                
+                sepoliaSite = await sepoliaWTTPSite.deploy(
+                    existingDPRAddress,
+                    tw3.address,
+                    gasPrice.deployParams
+                );
+                await sepoliaSite.waitForDeployment();
+                console.log("Sepolia site deployed at:", await sepoliaSite.getAddress());
+
+                // Switch back to original network
+                if (typeof hre.switchNetwork === 'function') {
+                    await hre.switchNetwork(originalNetwork);
+                } else if (typeof hre.network.provider.request === 'function') {
+                    await hre.network.provider.request({
+                        method: "hardhat_changeNetwork",
+                        params: [{ name: originalNetwork }]
+                    });
+                }
+                console.log(`Switched back to ${originalNetwork} network`);
+                console.log("Current network:", hre.network.name);
+            } catch (error) {
+                console.error("Failed during network switching:", error);
+                console.error("Available HRE methods:", Object.keys(hre));
+                console.error("Available network methods:", Object.keys(hre.network));
+                throw error;
+            }
+
+            handler = new WTTPHandler(existingWTTPAddress, tw3, hre.network.name as SupportedNetworks);
+        });
+    
+        it('should use master chain (hardhat) when no network specified', async () => {
+            const content = '<html><body>Local chain test</body></html>';
+            const response = await handler.fetch(`wttp://${hardhatSite.target}/test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: content
+            });
+            expect(response.status).to.equal(201);
+            
+            // Verify content
+            const getResponse = await handler.fetch(`wttp://${hardhatSite.target}/test.html`);
+            expect(await getResponse.text()).to.equal(content);
+        });
+    
+        it('should handle cross-chain requests when specified in URL', async () => {
+            const content = '<html><body>Sepolia chain test</body></html>';
+            console.log(`Sepolia site address: ${sepoliaSite.target}`);
+            const response = await handler.fetch(`wttp://${sepoliaSite.target}:sepolia/test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: content,
+                signer: tw3
+            });
+            // console.log(response);
+            // console.log(await response.text());
+            expect(response.status).to.equal(201);
+            
+            // Verify content
+            const getResponse = await handler.fetch(`wttp://${sepoliaSite.target}:sepolia/test.html`);
+            expect(await getResponse.text()).to.equal(content);
+        });
+    
+        it('should maintain separate content on different chains', async () => {
+            const hardhatContent = '<html><body>Hardhat content</body></html>';
+            const sepoliaContent = '<html><body>sepolia content</body></html>';
+            
+            // Create content on both chains
+            await handler.fetch(`wttp://${hardhatSite.target}/chain-test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: hardhatContent,
+                signer: tw3
+            });
+
+            await handler.fetch(`wttp://${sepoliaSite.target}:sepolia/chain-test.html`, {
+                method: Method.PUT,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Content-Location': 'datapoint/chunk'
+                },
+                body: sepoliaContent,
+                signer: tw3
+            });
+
+            // Verify each chain has its own content
+            const hardhatGet = await handler.fetch(`wttp://${hardhatSite.target}/chain-test.html`);
+            expect(await hardhatGet.text()).to.equal(hardhatContent);
+
+            const sepoliaGet = await handler.fetch(`wttp://${sepoliaSite.target}:sepolia/chain-test.html`);
+            expect(await sepoliaGet.text()).to.equal(sepoliaContent);
+        });
+    
+        it('should handle invalid network specifications', async () => {
+            const response = await handler.fetch(`wttp://${hardhatSite.target}:invalidnetwork/test.html`);
+            console.log("Response status:", response.status);
+            // console.log("Response body:", await response.text());
+            
+            expect(response.status).to.equal(501);
+            expect(response.statusText).to.equal('Not Implemented');
+            expect(await response.text()).to.include('Network');
+        });
+    });
+
 });

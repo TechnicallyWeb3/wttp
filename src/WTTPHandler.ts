@@ -1,5 +1,5 @@
 import { ethers, Signer, Addressable, EventLog } from 'ethers';
-import { WTTP, WTTP__factory, WTTPSite__factory, WTTPSite, DataPointRegistry__factory } from '../typechain-types';
+import { WTTP, WTTP__factory, WTTPSite__factory, DataPointRegistry__factory } from '../typechain-types';
 import { Method, RequestOptions } from './types/types';
 import { CHARSET_STRINGS, DEFAULT_HEADER, LANGUAGE_STRINGS, LOCATION_STRINGS, MIME_TYPE_STRINGS, MIME_TYPES, MASTER_NETWORK, SupportedNetworks, HTTP_STATUS_STRINGS } from './types/constants';
 import { ENSResolver, RequestBuilder, ResponseBuilder, URLParser, ProviderManager } from './utils/WTTPUtils';
@@ -13,12 +13,12 @@ import path from 'path';
  * through the WTTP (Web3 Transfer Protocol) contract.
  */
 export class WTTPHandler {
-    /** Address of the main WTTP contract */
-    public wttpAddress: string | Addressable;
     /** Instance of the WTTP contract */
     private wttp: WTTP;
     /** Default signer for transactions */
     public defaultSigner: Signer;
+    /** Signer for the current request */
+    private signer: Signer;
     /** Primary network for operations */
     public masterNetwork: SupportedNetworks;
     /** Configuration settings */
@@ -37,12 +37,17 @@ export class WTTPHandler {
     private providerManager: ProviderManager;
 
     /**
-     * Updates the WTTP contract instance
-     * @param wttpAddress - Address of the WTTP contract
+     * Updates the network provider
+     * @param networkName - Name of the network to switch to
      */
-    public setWTTP(wttpAddress: string | Addressable) {
-        this.wttp = WTTP__factory.connect(String(wttpAddress), this.defaultSigner);
-        this.wttpAddress = wttpAddress;
+    public async setProvider(networkName: SupportedNetworks) {
+        console.log(`Setting provider to ${networkName}...`);
+        if (!networkName) {
+            throw new Error(`Unsupported network: No configuration found for network ${networkName}`);
+        }
+        if (networkName !== (await this.provider.getNetwork()).name) {
+            this.provider = this.getProvider(networkName);
+        }
     }
 
     /**
@@ -50,16 +55,60 @@ export class WTTPHandler {
      * @param signer - New signer to use
      */
     public setSigner(signer: Signer) {
-        this.defaultSigner = signer.connect(this.provider);
+        this.signer = signer.connect(this.provider);
     }
 
     /**
-     * Changes the active network
-     * @param networkName - Name of the network to switch to
+     * Gets the WTTP contract address for a specific network from config
+     * @param networkName - Network to get address for
+     * @returns Contract address string
+     * @throws Error if address not found in config
+     * @private
      */
-    public setNetwork(networkName: SupportedNetworks) {
-        this.masterNetwork = networkName;
-        this.switchNetwork(networkName);
+    private getWTTPAddress(networkName: string): string {
+        const configPath = path.join(__dirname, 'wttp.config.json');
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const networkConfig = config.networks[networkName];
+            if (networkConfig && networkConfig.contracts.wttpAddress) {
+                return networkConfig.contracts.wttpAddress;
+            } else {
+                throw new Error(`WTTP address not found for network: ${networkName}`);
+            }
+        } catch (error) {
+            if (error instanceof Error) {
+                console.error('Error reading WTTP address:', error.message);
+                throw error;
+            } else {
+                console.error('Error reading WTTP address:', error);
+                throw error;
+            }
+        }
+    }
+
+    /**
+     * Updates the WTTP contract instance
+     * @param wttpAddress - Address of the WTTP contract
+     */
+    public async setWTTP(wttpAddress?: string | Addressable) {
+        if (!wttpAddress) {
+            wttpAddress = this.getWTTPAddress((await this.provider.getNetwork()).name);
+        }
+        this.wttp = WTTP__factory.connect(String(wttpAddress), this.signer);
+    }
+
+    
+    /**
+     * Loads a WTTP site contract instance
+     * @param host - Address of the site contract
+     * @param signer - Optional signer for transactions
+     * @returns Promise<WTTPSite> - Site contract instance
+     */
+    public loadSite(
+        host: string,
+        signer?: Signer
+    ) {
+        return WTTPSite__factory.connect(host, signer || this.signer);
     }
 
     /**
@@ -85,12 +134,8 @@ export class WTTPHandler {
         if (!networkName) {
             networkName = MASTER_NETWORK as SupportedNetworks;
         }
-
-        if (!wttpAddress) {
-            wttpAddress = this.getWTTPAddress(networkName);
-        }
-
-        this.provider = this.getProvider(networkName);
+        this.masterNetwork = networkName;
+        this.provider = this.getProvider(this.masterNetwork);
         // console.log(this.provider);
 
         if (!signer) {
@@ -98,20 +143,13 @@ export class WTTPHandler {
         } else if (!signer.provider) {
             signer = signer.connect(this.provider);
         }
-
         this.defaultSigner = signer;
-        this.masterNetwork = networkName;
-        this.wttpAddress = wttpAddress;
+        this.signer = this.defaultSigner;
+
+        if (!wttpAddress) {
+            wttpAddress = this.getWTTPAddress(networkName);
+        }
         this.wttp = WTTP__factory.connect(String(wttpAddress), signer);
-        // // Initialize WTTP synchronously instead of asynchronously
-        // try {
-        //     // Remove network switching for testing
-        //     this.wttp = WTTP__factory.connect(wttp, signer);
-        //     console.log(`WTTPHandler initialized with WTTP at ${wttp}`);
-        // } catch (error) {
-        //     console.error('Failed to initialize WTTP:', error);
-        //     throw error; // Re-throw to make initialization failures more visible
-        // }
     }
 
     /**
@@ -147,11 +185,25 @@ export class WTTPHandler {
         body?: string | Uint8Array;
         signer?: Signer;
     } = {}): Promise<Response> {
-
-        // const provider = this.providerManager.getProvider('seth');
-        // console.log(await provider.getBlockNumber());
-
+        // console.log(`Fetching ${url}...`);
         const { host, path, networkName } = this.parseURL(url);
+        const requestNetwork = networkName; // ? networkName : this.masterNetwork;
+
+        if (requestNetwork) {
+            try {
+                await this.setProvider(requestNetwork as SupportedNetworks);
+            } catch (error) {
+                if (error instanceof Error && error.message.includes("Unsupported network")) {
+                    return new Response(`Network ${requestNetwork} not supported`, { 
+                        status: 501,
+                        statusText: "Not Implemented"
+                    });
+                }
+                throw error;
+            }
+        }
+        this.setSigner(options.signer || this.defaultSigner);
+
         // Convert string method to Method enum if needed
         let convertedMethod;
         if (typeof options.method === 'string') {
@@ -182,25 +234,15 @@ export class WTTPHandler {
                 acceptsCharset: this.parseAcceptsCharset(options.headers?.['Accept-Charset']),
                 acceptsLocation: this.parseAcceptsLanguage(options.headers?.['Accept-Language']),
                 chunkIndex: this.parseChunkIndex(options.headers?.['Range']),
-                signer: options.signer || this.defaultSigner,
-                networkName: networkName || this.masterNetwork
+                signer: this.signer
             }
         );
 
-        // console.log(request);
+        // console.log(`Request built...`);
 
-        if (networkName && networkName !== this.masterNetwork) {
-            // Switch networks if specified
-            await this.switchNetwork(networkName as SupportedNetworks);
-        }
+        const response = this.executeRequest(await request);
 
-        const response = this.executeRequest(await request).then((response) => {
-            if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
-                // Switch back to master network
-                this.switchNetwork(this.masterNetwork);
-            }
-            return response;
-        });
+        // console.log(`Response received...`);
 
         return response;
     }
@@ -322,98 +364,6 @@ export class WTTPHandler {
     }
 
     /**
-     * Loads or creates new WTTP contract instance
-     * @param wttpAddress - Optional address of WTTP contract
-     * @param signer - Optional signer for transactions
-     * @param networkName - Optional network to use
-     * @returns Promise<WTTP> - WTTP contract instance
-     */
-    public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: SupportedNetworks) {
-
-        if (!networkName) {
-            networkName = this.masterNetwork;
-        }
-
-        if (networkName && networkName !== this.masterNetwork) {
-            // Switch networks if specified
-            await this.switchNetwork(networkName)
-        }
-
-
-        if (!wttpAddress) {
-            wttpAddress = this.getWTTPAddress(networkName);
-        }
-
-        const wttp = WTTP__factory.connect(wttpAddress, signer || this.defaultSigner);
-
-        // console.log(`WTTP loaded at ${wttp.target}`);
-
-        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
-            // Switch back to master network
-            await this.switchNetwork(this.masterNetwork);
-        }
-
-        return wttp;
-    }
-
-    /**
-     * Switches the current network connection
-     * @param networkName - Network to switch to
-     * @private
-     */
-    private async switchNetwork(networkName: SupportedNetworks) {
-        // console.log(`Switching to ${networkName} network`);
-        // console.log((await this.provider.getNetwork()).name`);
-        this.provider = this.getProvider(networkName);
-        // console.log((await this.provider.getNetwork()).name);
-        this.defaultSigner = this.defaultSigner.connect(this.provider);
-        this.wttp = this.wttp.connect(this.defaultSigner);
-        // console.log(`Switched to ${networkName} network`);
-    }
-
-    /**
-     * Gets the WTTP contract address for a specific network from config
-     * @param networkName - Network to get address for
-     * @returns Contract address string
-     * @throws Error if address not found in config
-     * @private
-     */
-    private getWTTPAddress(networkName: string): string {
-        const configPath = path.join(__dirname, 'wttp.config.json');
-        try {
-            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            const networkConfig = config.networks[networkName];
-            if (networkConfig && networkConfig.contracts.wttpAddress) {
-                return networkConfig.contracts.wttpAddress;
-            } else {
-                throw new Error(`WTTP address not found for network: ${networkName}`);
-            }
-        } catch (error) {
-            if (error instanceof Error) {
-                console.error('Error reading WTTP address:', error.message);
-                throw error;
-            } else {
-                console.error('Error reading WTTP address:', error);
-                throw error;
-            }
-        }
-    }
-
-    /**
-     * Loads a WTTP site contract instance
-     * @param host - Address of the site contract
-     * @param signer - Optional signer for transactions
-     * @returns Promise<WTTPSite> - Site contract instance
-     */
-    public async loadSite(
-        host: string,
-        signer?: Signer
-    ): Promise<WTTPSite> {
-        const site = WTTPSite__factory.connect(host, signer || this.defaultSigner);
-        return site;
-    }
-
-    /**
      * Calculates the address of a data point based on its content and metadata
      * @param request - Request containing data and metadata
      * @returns string - Address of the data point
@@ -456,7 +406,7 @@ export class WTTPHandler {
     public async loadRoyalty(request: any) {
         // console.log(`request for ${request.host}:`);
         // console.log(request);
-        const site = await this.loadSite(request.host);
+        const site = this.loadSite(request.host, request.signer);
         // console.log(`Site ${site.target}:`);
         // console.log(site);
         const dprAddress = await site?.DPR_();
@@ -505,6 +455,7 @@ export class WTTPHandler {
         try {
             switch (request.method) {
                 case Method.GET:
+                    this.setWTTP();
                     rawResponse = await this.wttp.GET(
                         request.requestLine,
                         request.requestHeader,
@@ -513,6 +464,7 @@ export class WTTPHandler {
                     break;
 
                 case Method.HEAD:
+                    this.setWTTP();
                     rawResponse = await this.wttp.HEAD(
                         request.host,
                         request.requestLine
@@ -520,6 +472,7 @@ export class WTTPHandler {
                     break;
 
                 case Method.LOCATE:
+                    this.setWTTP();
                     rawResponse = await this.wttp.LOCATE(
                         request.host,
                         request.requestLine
@@ -527,7 +480,6 @@ export class WTTPHandler {
                     break;
 
                 case Method.PUT: {
-
                     if (!request.mimeType) {
                         rawResponse = {
                             head: {
@@ -556,13 +508,14 @@ export class WTTPHandler {
                         return this.buildResponse(request, rawResponse);
                     }
                     // console.log(`Loading site ${request.host} on ${(await this.provider.getNetwork()).name}.`);
-                    const site = await this.loadSite(request.host);
-                    // console.log(`Site loaded`);
+                    const site = this.loadSite(request.host, request.signer);
+                    console.log(`Site loaded`);
+                    console.log(`${request.host} is on ${(await site.runner?.provider?.getNetwork())?.name}`);
                     const royalty = await this.loadRoyalty(request);
                     // console.log(`Royalty: ${royalty}`);
 
                     try {
-                        const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PUT(
+                        const tx = await site.PUT(
                             request.requestLine,
                             request.mimeType,
                             request.charset,
@@ -613,32 +566,10 @@ export class WTTPHandler {
                         };
                     }
 
-                    // console.log(`Raw response:`);
-                    // console.log(rawResponse);
-
-                    // const event = (receipt?.logs?.find((e: any) => e.fragment?.name === 'PUTSuccess') as EventLog);
-                    // rawResponse = event?.args?.putResponse;
-
-                    // console.log(`Event:`);
-                    // console.log(event);
-                    // console.log(`Receipt Log 0 Data:`);
-                    // const logs = receipt?.logs || [];
-                    // const log = logs[0] || { topics: [], data: '' };
-                    // console.log(log);
-
-                    // const decoded = site.interface.parseLog(logs[0])?.fragment;
-                    // const decoded1 = site.interface.parseLog(logs[1])?.fragment;
-                    // console.log(`Decoded event:`);
-                    // console.log(decoded);
-                    // console.log(`Decoded event 1:`);
-                    // console.log(decoded1);
-
-
                     break;
                 }
 
                 case Method.PATCH: {
-
                     if (!request.data) {
                         rawResponse = {
                             head: {
@@ -666,13 +597,13 @@ export class WTTPHandler {
                         };
                         return this.buildResponse(request, rawResponse);
                     }
-
-                    const site = await this.loadSite(request.host);
+                    
+                    const site = this.loadSite(request.host, request.signer);
                     const royalty = await this.loadRoyalty(request);
                     // console.log(`Request Signer: ${request.signer.connect(this.provider)}`);
                     // console.log(`Chunk: ${request.chunk}`);
                     // console.log(`Publisher: ${request.publisher}`);
-                    const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).PATCH(
+                    const tx = await site.PATCH(
                         request.requestLine,
                         request.data,
                         request.chunk,
@@ -682,12 +613,13 @@ export class WTTPHandler {
                     const receipt = await tx.wait();
                     const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'PATCHSuccess') as EventLog;
                     rawResponse = event?.args?.patchResponse;
+
                     break;
                 }
 
                 case Method.DEFINE: {
-                    const site = await this.loadSite(request.host);
-                    const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).DEFINE(
+                    const site = this.loadSite(request.host, request.signer);
+                    const tx = await site.DEFINE(
                         request.host,
                         request.requestLine,
                         request.header
@@ -695,12 +627,13 @@ export class WTTPHandler {
                     const receipt = await tx.wait();
                     const event = receipt?.logs?.find((e: any) => e.fragment?.name === 'DEFINESuccess') as EventLog;
                     rawResponse = event?.args?.defineResponse;
+
                     break;
                 }
 
                 case Method.DELETE: {
-                    const site = await this.loadSite(request.host);
-                    const tx = await site.connect(request.signer.connect(this.provider) || this.defaultSigner).DELETE(
+                    const site = this.loadSite(request.host, request.signer);
+                    const tx = await site.DELETE(
                         request.host,
                         request.requestLine
                     );
@@ -724,7 +657,9 @@ export class WTTPHandler {
             }
         } catch (error: any) {
             // Check if this is our custom HTTPError
+            // console.log('Error caught:', error);
             if (error?.message?.includes('HTTPError')) {
+                console.log('HTTPError caught');
                 // Extract code and details from the error message
                 const errorMatch = error.message.match(/HTTPError\((\d+),\s*"(.*)"\)/);
                 if (errorMatch) {
@@ -742,9 +677,22 @@ export class WTTPHandler {
                         "No additional details provided")
                     };
                 }
+            } else if (error.message.includes('Unsupported network')) {
+                console.log('Unsupported network error caught');
+                const networkName = error.message.match(/Unsupported network: No configuration found for network (\w+)/)?.[1];
+                rawResponse = {
+                    head: {
+                        responseLine: {
+                            protocol: "WTTP/2.0",
+                            code: 501
+                        },
+                        headerInfo: DEFAULT_HEADER
+                    },
+                    body: ethers.toUtf8Bytes(`Not Implemented: Network '${networkName}' is not supported`)
+                };
             } else {
                 // Handle other types of errors
-                console.error('Unexpected error:', error);
+                console.error('Unexpected error caught');
                 rawResponse = {
                     head: {
                         responseLine: {
