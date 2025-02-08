@@ -119,3 +119,4 @@ export interface ParsedURL {
     networkName?: SupportedNetworks;
 }
 
+export type ContractType = 'dataPointStorage' | 'dataPointRegistry' | 'wttpPermissions' | 'wttpStorage' | 'wttpSite' | 'wttp' | 'svgAssembler';

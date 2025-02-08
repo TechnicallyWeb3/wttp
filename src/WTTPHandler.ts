@@ -141,6 +141,7 @@ export class WTTPHandler {
         if (!signer) {
             signer = ethers.Wallet.createRandom().connect(this.provider);
         } else if (!signer.provider) {
+            console.log(`Custom Signer ${signer} is not connected to the provider`);
             signer = signer.connect(this.provider);
         }
         this.defaultSigner = signer;
@@ -437,6 +438,17 @@ export class WTTPHandler {
     public async executeRequest(request: any) {
         // console.log(`Executing request...`);
 
+        // console.log(`Signer:`);
+        // console.log(request.signer.address);
+        // console.log(`Signer provider:`)
+        // const provider = request.signer.provider;
+        // await provider.ready;
+        // console.log(`Network name: ${(await provider.getNetwork()).name}`);
+
+        // Prove provider is functional
+        // const blockNumber = await provider.getBlockNumber();
+        // console.log(`Current block number: ${blockNumber}`);
+
         let rawResponse;
         if (request.error) {
             rawResponse = {
@@ -480,6 +492,48 @@ export class WTTPHandler {
                     break;
 
                 case Method.PUT: {
+                    // Add balance logging with error handling
+                    const network = await request.signer.provider.getNetwork();
+                    console.log(`Network: ${network.name}`);
+                    const address = await request.signer.getAddress();
+                    console.log(`Signer address: ${await request.signer.getAddress()}`);
+                    let balance;
+                    try {
+                        // Try getting balance directly from provider
+                        balance = await request.signer.provider.getBalance(address);
+                        console.log(`Balance: ${ethers.formatEther(balance)} ETH`);
+                    } catch (error) {
+                        console.log('Failed to get balance:', error);
+                        // Try alternative method using provider directly
+                        try {
+                            const provider = request.signer.provider;
+                            const address = await request.signer.getAddress();
+                            balance = await provider.getBalance(address);
+                            console.log(`Balance (alternative method): ${ethers.formatEther(balance)} ETH`);
+                        } catch (altError) {
+                            console.log('Alternative balance check also failed:', altError);
+                        }
+                    } 
+
+                    console.log(`Balance type: ${typeof balance}`);
+                    console.log(`Above zero: ${BigInt(balance) > 0n}`);
+                    // console.log(`Is zero: ${balance.isZero()}`);
+
+                    // Add check for network and funds
+                    if (BigInt(balance) == 0n) {
+                        rawResponse = {
+                            head: {
+                                responseLine: {
+                                    protocol: "WTTP/2.0",
+                                    code: 402
+                                },
+                                headerInfo: DEFAULT_HEADER
+                            },
+                            body: ethers.toUtf8Bytes("Payment Required: Account needs funds on " + network.name)
+                        };
+                        return this.buildResponse(request, rawResponse);
+                    }
+
                     if (!request.mimeType) {
                         rawResponse = {
                             head: {
@@ -509,10 +563,10 @@ export class WTTPHandler {
                     }
                     // console.log(`Loading site ${request.host} on ${(await this.provider.getNetwork()).name}.`);
                     const site = this.loadSite(request.host, request.signer);
-                    console.log(`Site loaded`);
-                    console.log(`${request.host} is on ${(await site.runner?.provider?.getNetwork())?.name}`);
+                    console.log(`Site ${request.host} on ${(await site.runner?.provider?.getNetwork())?.name} loaded`);
                     const royalty = await this.loadRoyalty(request);
-                    // console.log(`Royalty: ${royalty}`);
+                    console.log(`Royalty: ${royalty}`);
+                    console.log(`Runner address: ${await (site.runner as Signer).getAddress()}`);
 
                     try {
                         const tx = await site.PUT(

@@ -26,6 +26,7 @@ const defaultAccount = [
   process.env.DPS_DEPLOYER || "",
   process.env.DPR_DEPLOYER || "",
   process.env.WTTP_DEPLOYER || "",
+  process.env.SVG_DEPLOYER || "",
 ].filter(key => key !== "");  // Remove empty strings
 
 // const defaultAccount = {

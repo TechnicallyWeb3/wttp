@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { network } from 'hardhat';
 import { SupportedNetworks } from '../src/types/constants';
+import { ContractType } from '../src/types/types';
 
 interface NetworkConfig {
     chainId?: number;
@@ -59,7 +60,7 @@ class ContractManager {
     }
 
     public async saveContract(
-        contractName: 'dataPointStorage' | 'dataPointRegistry' | 'wttpPermissions' | 'wttpStorage' | 'wttpSite' | 'wttp',
+        contractName: ContractType,
         address: string
     ) {
         const networkName = network.name;
@@ -98,7 +99,7 @@ class ContractManager {
     }
 
     public getContractAddress(
-        contractName: 'dataPointStorage' | 'dataPointRegistry' | 'wttpPermissions' | 'wttpStorage' | 'wttpSite' | 'wttp'
+        contractName: ContractType
     ): string | undefined {
         const networkName = network.name;
         return this.config.networks[networkName]?.contracts?.[`${contractName}Address`];

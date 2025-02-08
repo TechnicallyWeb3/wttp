@@ -733,4 +733,170 @@ describe('WTTPHandler', () => {
         });
     });
 
+    //Testing HTTP headers
+    describe('Header Handling', () => {
+        let handler: WTTPHandler;
+    
+        beforeEach(async () => {
+            handler = new WTTPHandler(wttp.target, tw3, hre.network.name as SupportedNetworks);
+        });
+    
+        describe('Content-Type Headers', () => {
+            const contentTypeTests = [
+                {
+                    name: 'basic content type',
+                    header: 'text/html',
+                    expected: {
+                        mimeType: MIME_TYPE_STRINGS['text/html'],
+                        charset: CHARSET_STRINGS['utf-8'] // default charset
+                    }
+                },
+                {
+                    name: 'content type with charset',
+                    header: 'text/html; charset=utf-8',
+                    expected: {
+                        mimeType: MIME_TYPE_STRINGS['text/html'],
+                        charset: CHARSET_STRINGS['utf-8']
+                    }
+                },
+                {
+                    name: 'application/json type',
+                    header: 'application/json',
+                    expected: {
+                        mimeType: MIME_TYPE_STRINGS['application/json'],
+                        charset: CHARSET_STRINGS['utf-8']
+                    }
+                }
+            ];
+    
+            contentTypeTests.forEach(({ name, header, expected }) => {
+                it(`should parse ${name}`, async () => {
+                    const response = await handler.fetch(`wttp://${site.target}/header-test.html`, {
+                        method: Method.PUT,
+                        headers: {
+                            'Content-Type': header,
+                            'Content-Location': 'datapoint/chunk'
+                        },
+                        body: '<html><body>Test</body></html>'
+                    });
+
+                    console.log(`Response status:`);
+                    console.log(response);
+                    console.log(`Response body: ${await response.text()}`);
+    
+                    const headResponse = await handler.fetch(`wttp://${site.target}/header-test.html`, {
+                        method: Method.HEAD
+                    });
+                    const contentType = headResponse.headers.get('Content-Type');
+                    console.log(`Content-Type: ${contentType}`);
+                    console.log(`Header: ${header}`);
+                    expect(contentType).to.include(header);
+                });
+            });
+        });
+    
+        describe('Content-Location Headers', () => {
+            const locationTests = [
+                {
+                    name: 'datapoint chunk',
+                    location: 'datapoint/chunk',
+                    expected: LOCATION_STRINGS['datapoint/chunk']
+                },
+                {
+                    name: 'datapoint reference',
+                    location: 'datapoint/reference',
+                    expected: LOCATION_STRINGS['datapoint/reference']
+                }
+            ];
+    
+            locationTests.forEach(({ name, location, expected }) => {
+                it(`should handle ${name}`, async () => {
+                    const response = await handler.fetch(`wttp://${site.target}/location-test.html`, {
+                        method: Method.PUT,
+                        headers: {
+                            'Content-Type': 'text/html',
+                            'Content-Location': location
+                        },
+                        body: '<html><body>Test</body></html>'
+                    });
+    
+                    const headResponse = await handler.fetch(`wttp://${site.target}/location-test.html`, {
+                        method: Method.HEAD
+                    });
+                    const contentLocation = headResponse.headers.get('Content-Location');
+                    console.log(`Content-Location: ${contentLocation}`);
+                    expect(contentLocation).to.equal(location);
+                });
+            });
+        });
+    
+        describe('Redirect Handling', () => {
+            // First, let's define our redirect codes
+            const REDIRECT_CODES = {
+                MOVED_PERMANENTLY: 301,
+                FOUND: 302,
+                NOT_MODIFIED: 304,
+                TEMPORARY_REDIRECT: 307,
+                PERMANENT_REDIRECT: 308
+            } as const;
+    
+            it('should handle permanent redirects', async () => {
+                const originalPath = '/original.html';
+                const newPath = '/new-location.html';
+                
+                // Create content at new location
+                await handler.fetch(`wttp://${site.target}${newPath}`, {
+                    method: Method.PUT,
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Content-Location': 'datapoint/chunk'
+                    },
+                    body: '<html><body>Redirected Content</body></html>'
+                });
+    
+                // Set up redirect at original path
+                await handler.fetch(`wttp://0xa3F64DF35803Fd9ff28837043fa902B98168fe00:eth`, {
+                    method: Method.PUT,
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Content-Location': 'datapoint/chunk',
+                        'Redirect-Code': REDIRECT_CODES.MOVED_PERMANENTLY.toString(),
+                        'Redirect-Location': newPath
+                    },
+                    body: ''
+                });
+    
+                const response = await handler.fetch(`wttp://${site.target}${originalPath}`);
+                expect(response.status).to.equal(REDIRECT_CODES.MOVED_PERMANENTLY);
+                expect(response.headers.get('Location')).to.equal(newPath);
+            });
+    
+            it('should handle not modified responses', async () => {
+                const content = '<html><body>Cacheable Content</body></html>';
+                const path = '/cache-test.html';
+    
+                // Create initial content
+                const putResponse = await handler.fetch(`wttp://${site.target}${path}`, {
+                    method: Method.PUT,
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Content-Location': 'datapoint/chunk'
+                    },
+                    body: content
+                });
+    
+                const etag = putResponse.headers.get('ETag');
+    
+                // Request with matching ETag
+                const response = await handler.fetch(`wttp://${site.target}${path}`, {
+                    headers: {
+                        'If-None-Match': etag
+                    }
+                });
+    
+                expect(response.status).to.equal(REDIRECT_CODES.NOT_MODIFIED);
+                expect(await response.text()).to.equal('');
+            });
+        });
+    });
 });

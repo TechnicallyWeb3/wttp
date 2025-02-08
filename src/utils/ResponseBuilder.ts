@@ -107,8 +107,8 @@ export class ResponseBuilder {
         // console.log(`Raw Response:`);
         // console.log(rawResponse);
         // Use the new buildHeaders method
-        const headers = head.metadata ? this.buildHeaders(head) : new Headers();
-        let statusCode = head.responseLine ? head.responseLine.code : 500;
+        const headers = head?.metadata ? this.buildHeaders(head) : new Headers();
+        let statusCode = head?.responseLine ? head.responseLine.code : 500;
 
         switch (request.method) {
             case Method.GET:
