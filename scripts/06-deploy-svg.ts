@@ -2,7 +2,15 @@ import { ethers } from "hardhat";
 import { contractManager } from '../lib/contractManager';
 
 async function main() {
-    const [, svgDeployer] = await ethers.getSigners();
+    const [,,,, svgDeployer] = await ethers.getSigners();
+    console.log(svgDeployer.address);
+
+    // Check nonce of SVG deployer
+    const nonce = await svgDeployer.getNonce();
+    console.log(nonce);
+    if (nonce !== 0) {
+        throw new Error(`SVG deployer address ${svgDeployer.address} has nonce ${nonce}. Expected nonce 0 for fresh deployment.`);
+    }
     
     const SVGAssembler = await ethers.getContractFactory("SVGAssembler");
 
@@ -20,6 +28,14 @@ async function main() {
         console.log("Loading existing SVGAssembler at:", existingSVGAddress);
         svgAssembler = SVGAssembler.attach(existingSVGAddress);
     } else {
+        // Estimate gas and check if deployment is likely to succeed
+        const deployTx = await SVGAssembler.getDeployTransaction(dprAddress);
+        try {
+            await ethers.provider.estimateGas(deployTx);
+        } catch (error) {
+            throw new Error(`Deployment would likely fail: ${error.message}`);
+        }
+
         const svgWithSigner = SVGAssembler.connect(svgDeployer);
         svgAssembler = await svgWithSigner.deploy(dprAddress);
         await svgAssembler.waitForDeployment();

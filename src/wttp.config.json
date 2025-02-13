@@ -9,7 +9,8 @@
       "contracts": {
         "dataPointStorageAddress": "0x0eA9D9f73cBd2A053451cb9c22DbC3570f7C47C4",
         "dataPointRegistryAddress": "0x9885FF0546C921EFb19b1C8a2E10777A9dAc8e88",
-        "wttpAddress": "0x2D5BacA22fA6f9D8f01cD62735aCe37E3fC0dea7"
+        "wttpAddress": "0x2D5BacA22fA6f9D8f01cD62735aCe37E3fC0dea7",
+        "svgAssemblerAddress": "0x07f26a3612577282Bc1f62f9E0C567D7a61634c9"
       }
     },
     "ethereum": {
@@ -42,7 +43,8 @@
       "contracts": {
         "dataPointStorageAddress": "0x0eA9D9f73cBd2A053451cb9c22DbC3570f7C47C4",
         "dataPointRegistryAddress": "0x9885FF0546C921EFb19b1C8a2E10777A9dAc8e88",
-        "wttpAddress": "0x2D5BacA22fA6f9D8f01cD62735aCe37E3fC0dea7"
+        "wttpAddress": "0x2D5BacA22fA6f9D8f01cD62735aCe37E3fC0dea7",
+        "svgAssemblerAddress": "0x07f26a3612577282Bc1f62f9E0C567D7a61634c9"
       }
     },
     "fantom": {

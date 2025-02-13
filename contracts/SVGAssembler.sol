@@ -6,8 +6,8 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./WebStorage.sol";
 
 struct SVGData {
-    uint256 height;
     uint256 width;
+    uint256 height;
     bool viewbox;
     bool base64;
     bytes32[] layers;
@@ -50,10 +50,10 @@ contract SVGAssembler {
             svg = string(
                 abi.encodePacked(
                     svg,
-                    ' height="',
-                    svgData.height,
-                    '" width="',
+                    ' width="',
                     svgData.width,
+                    '" height="',
+                    svgData.height,
                     '">'
                 )
             );

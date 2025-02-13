@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 
 async function main() {
     const [funder,,,,svgDeployer] = await ethers.getSigners();
-    console.log(svgDeployer.address);
+    // console.log(svgDeployer.address);
     
     // Estimate gas for deployment
     const SVGAssembler = await ethers.getContractFactory("SVGAssembler");
@@ -13,7 +13,7 @@ async function main() {
 
     const feeData = await ethers.provider.getFeeData();
     const maxFeePerGas = feeData.maxFeePerGas || (feeData.gasPrice || 0n);
-    const buffer = 1.1; // 10% buffer for safety
+    const buffer = 1.5; // 50% buffer for safety
     
     // Calculate required funding
     const requiredFunding = (BigInt(gasEstimate) * maxFeePerGas * BigInt(Math.ceil(buffer * 100)) / 100n);
