@@ -118,17 +118,41 @@ export class WTTPHandler {
      * Fetches a resource from a WTTP site
      * @param url - URL of the resource to fetch
      * @param options - Request options similar to the Fetch API
+     * @param options.method - HTTP method to use (GET, PUT, etc.)
+     * @param options.headers - Request headers
+     * @param options.body - Request body
+     * @param options.signer - Signer to use for the request
+     * @param options.followRedirects - Whether to automatically follow redirects (default: true)
+     * @param options.maxRedirects - Maximum number of redirects to follow (default: 10)
      * @returns Promise<Response> - Response object similar to the Fetch API
      * 
      * @example
      * ```typescript
+     * // Basic request
      * const response = await handler.fetch('wttp://site.eth/resource.html', {
      *   method: 'GET',
      *   headers: {
      *     'Accept': 'text/html'
      *   }
      * });
+     * 
+     * // Request with redirect options
+     * const response = await handler.fetch('wttp://site.eth/resource.html', {
+     *   method: 'GET',
+     *   followRedirects: true,
+     *   maxRedirects: 5
+     * });
      * ```
+     * 
+     * @remarks
+     * By default, the fetch method will automatically follow redirects (3xx status codes).
+     * - 301, 302: Follows the redirect, preserving the original method unless it's POST (which becomes GET)
+     * - 303: Always follows with GET method, regardless of the original method
+     * - 307, 308: Follows the redirect, strictly preserving the original method and body
+     * - 304: Not Modified is not treated as a redirect
+     * 
+     * You can disable redirect following by setting `followRedirects: false` in the options.
+     * You can also limit the number of redirects with `maxRedirects` (default: 10).
      */
     async fetch(url: string, options: {
         method?: Method | string;
@@ -146,6 +170,9 @@ export class WTTPHandler {
         };
         body?: string | Uint8Array;
         signer?: Signer;
+        followRedirects?: boolean;
+        maxRedirects?: number;
+        _redirectCount?: number; // Internal parameter to track redirect count
     } = {}): Promise<Response> {
 
         // const provider = this.providerManager.getProvider('seth');
@@ -201,7 +228,67 @@ export class WTTPHandler {
             await this.switchNetwork(this.masterNetwork);
         }
 
+        // Handle redirects if enabled (default is true)
+        const followRedirects = options.followRedirects !== false;
+        const maxRedirects = options.maxRedirects || 10;
+        const redirectCount = options._redirectCount || 0;
+
+        if (followRedirects && 
+            response.status >= 300 && 
+            response.status < 400 && 
+            response.status !== 304 && // Not Modified is not a redirect
+            response.headers.has('Location') && 
+            redirectCount < maxRedirects) {
+            
+            return this.handleRedirect(response, {
+                ...options,
+                _redirectCount: redirectCount + 1
+            });
+        }
+
         return response;
+    }
+    
+    /**
+     * Handles redirect responses by following the Location header
+     * @param response - The redirect response
+     * @param options - Original request options
+     * @returns Promise<Response> - Response from the redirected URL
+     * @private
+     */
+    private async handleRedirect(response: Response, options: any): Promise<Response> {
+        const location = response.headers.get('Location');
+        if (!location) {
+            return response; // No Location header, can't redirect
+        }
+
+        // For 303 See Other, always use GET method
+        if (response.status === 303) {
+            options.method = 'GET';
+            options.body = undefined;
+        }
+        
+        // For 301, 302, 307, 308, preserve the original method and body
+        // (307 and 308 explicitly require preserving the method)
+        
+        // Resolve relative URLs
+        let redirectUrl = location;
+        if (!location.match(/^[a-z]+:\/\//i)) {
+            // It's a relative URL, resolve it
+            const originalUrl = options._originalUrl || '';
+            const baseUrl = originalUrl.split('/').slice(0, 3).join('/');
+            redirectUrl = location.startsWith('/') 
+                ? `${baseUrl}${location}` 
+                : `${baseUrl}/${location}`;
+        }
+        
+        // Store the original URL for potential future redirects
+        if (!options._originalUrl) {
+            options._originalUrl = redirectUrl;
+        }
+        
+        // Follow the redirect
+        return this.fetch(redirectUrl, options);
     }
 
     /**

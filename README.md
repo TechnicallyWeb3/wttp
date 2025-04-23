@@ -106,6 +106,7 @@ node my-site.js
 - Range requests for large resources
 - ETags and conditional requests
 - Cache control directives
+- Automatic redirect following (3xx status codes)
 
 ### Storage System
 - Content-addressed storage using DataPoints
