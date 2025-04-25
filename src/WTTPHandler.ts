@@ -55,25 +55,30 @@ export class WTTPHandler {
 
     /**
      * Changes the active network
-     * @param networkName - Name of the network to switch to
+     * @param networkIdentifier - Network identifier (name, alias, or chain ID) to switch to
      */
-    public setNetwork(networkName: SupportedNetworks) {
-        this.masterNetwork = networkName;
-        this.switchNetwork(networkName);
+    public setNetwork(networkIdentifier: string) {
+        try {
+            const resolved = this.providerManager.resolveNetworkName(networkIdentifier);
+            this.masterNetwork = resolved as SupportedNetworks;
+            this.switchNetwork(resolved);
+        } catch (error) {
+            console.error(`Failed to set network to ${networkIdentifier}:`, error);
+            throw error;
+        }
     }
 
     /**
      * Creates a new WTTPHandler instance
      * @param wttpAddress - Optional address of the WTTP contract
      * @param signer - Optional signer for transactions
-     * @param networkName - Optional network to connect to
+     * @param networkIdentifier - Optional network identifier (name, alias, or chain ID) to connect to
      */
     constructor(
         wttpAddress?: string | Addressable,
         signer?: Signer,
-        networkName?: SupportedNetworks
+        networkIdentifier?: string
     ) {
-
         this.urlParser = new URLParser();
         this.requestBuilder = new RequestBuilder();
         this.responseBuilder = new ResponseBuilder();
@@ -82,15 +87,24 @@ export class WTTPHandler {
 
         this.config = JSON.parse(fs.readFileSync(path.join(__dirname, 'wttp.config.json'), 'utf8'));
         
-        if (!networkName) {
-            networkName = MASTER_NETWORK as SupportedNetworks;
+        // Default to master network if none specified
+        let resolvedNetworkName = MASTER_NETWORK as SupportedNetworks;
+        
+        // Try to resolve the network identifier if provided
+        if (networkIdentifier) {
+            try {
+                const resolved = this.providerManager.resolveNetworkName(networkIdentifier);
+                resolvedNetworkName = resolved as SupportedNetworks;
+            } catch (error) {
+                console.warn(`Could not resolve network identifier ${networkIdentifier}, using master network ${MASTER_NETWORK}`);
+            }
         }
 
         if (!wttpAddress) {
-            wttpAddress = this.getWTTPAddress(networkName);
+            wttpAddress = this.getWTTPAddress(resolvedNetworkName);
         }
 
-        const provider = this.providerManager.getProvider(networkName);
+        const provider = this.providerManager.getProvider(resolvedNetworkName);
 
         if (!signer) {
             signer = ethers.Wallet.createRandom().connect(provider);
@@ -99,19 +113,10 @@ export class WTTPHandler {
         }
 
         this.defaultSigner = signer;
-        this.masterNetwork = networkName;
+        this.masterNetwork = resolvedNetworkName;
         this.wttpAddress = wttpAddress;
         this.wttp = WTTP__factory.connect(String(wttpAddress), signer);
         this.provider = provider;
-        // // Initialize WTTP synchronously instead of asynchronously
-        // try {
-        //     // Remove network switching for testing
-        //     this.wttp = WTTP__factory.connect(wttp, signer);
-        //     console.log(`WTTPHandler initialized with WTTP at ${wttp}`);
-        // } catch (error) {
-        //     console.error('Failed to initialize WTTP:', error);
-        //     throw error; // Re-throw to make initialization failures more visible
-        // }
     }
 
     /**
@@ -189,16 +194,31 @@ export class WTTPHandler {
 
         // console.log(request);
 
-        if (networkName && networkName !== this.masterNetwork) {
-            // Switch networks if specified
-            await this.switchNetwork(networkName as SupportedNetworks);
+        if (networkName) {
+            try {
+                const resolved = this.providerManager.resolveNetworkName(networkName);
+                if (resolved !== this.masterNetwork) {
+                    // Switch networks if specified and different from current
+                    await this.switchNetwork(resolved);
+                }
+            } catch (error) {
+                console.error(`Failed to switch to network ${networkName}:`, error);
+                throw new Error(`Unknown network identifier in URL: ${networkName}`);
+            }
         }
 
         const response = await this.executeRequest(await request);
 
-        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
-            // Switch back to master network
-            await this.switchNetwork(this.masterNetwork);
+        // Switch back to master network if we changed it
+        if (this.masterNetwork && networkName) {
+            try {
+                const resolved = this.providerManager.resolveNetworkName(networkName);
+                if (resolved !== this.masterNetwork) {
+                    await this.switchNetwork(this.masterNetwork);
+                }
+            } catch (error) {
+                // Already logged in the previous try/catch
+            }
         }
 
         return response;
@@ -324,30 +344,33 @@ export class WTTPHandler {
      * Loads or creates new WTTP contract instance
      * @param wttpAddress - Optional address of WTTP contract
      * @param signer - Optional signer for transactions
-     * @param networkName - Optional network to use
+     * @param networkIdentifier - Optional network identifier (name, alias, or chain ID) to use
      * @returns Promise<WTTP> - WTTP contract instance
      */
-    public async loadWTTP(wttpAddress?: string, signer?: Signer, networkName?: SupportedNetworks) {
+    public async loadWTTP(wttpAddress?: string, signer?: Signer, networkIdentifier?: string) {
+        let resolvedNetworkName = this.masterNetwork;
 
-        if (!networkName) {
-            networkName = this.masterNetwork;
+        if (networkIdentifier) {
+            try {
+                const resolved = this.providerManager.resolveNetworkName(networkIdentifier);
+                resolvedNetworkName = resolved as SupportedNetworks;
+            } catch (error) {
+                console.warn(`Could not resolve network identifier ${networkIdentifier}, using master network ${this.masterNetwork}`);
+            }
         }
 
-        if (networkName && networkName !== this.masterNetwork) {
+        if (resolvedNetworkName !== this.masterNetwork) {
             // Switch networks if specified
-            await this.switchNetwork(networkName)
+            await this.switchNetwork(resolvedNetworkName);
         }
-
         
         if (!wttpAddress) {
-            wttpAddress = this.getWTTPAddress(networkName);
+            wttpAddress = this.getWTTPAddress(resolvedNetworkName);
         }
 
         const wttp = WTTP__factory.connect(wttpAddress, signer || this.defaultSigner);
 
-        // console.log(`WTTP loaded at ${wttp.target}`);
-
-        if (this.masterNetwork && networkName && networkName !== this.masterNetwork) {
+        if (this.masterNetwork && resolvedNetworkName !== this.masterNetwork) {
             // Switch back to master network
             await this.switchNetwork(this.masterNetwork);
         }
@@ -357,31 +380,45 @@ export class WTTPHandler {
 
     /**
      * Switches the current network connection
-     * @param networkName - Network to switch to
+     * @param networkIdentifier - Network identifier (name, alias, or chain ID) to switch to
      * @private
      */
-    private async switchNetwork(networkName: SupportedNetworks) {
-        const provider = this.providerManager.getProvider(networkName);
-        this.defaultSigner = this.defaultSigner.connect(provider);
-        this.wttp = this.wttp.connect(this.defaultSigner);
+    private async switchNetwork(networkIdentifier: string) {
+        try {
+            const provider = this.providerManager.getProvider(networkIdentifier);
+            this.defaultSigner = this.defaultSigner.connect(provider);
+            this.wttp = this.wttp.connect(this.defaultSigner);
+        } catch (error) {
+            console.error(`Error switching to network ${networkIdentifier}:`, error);
+            throw error;
+        }
     }
 
     /**
      * Gets the WTTP contract address for a specific network from config
-     * @param networkName - Network to get address for
+     * @param networkIdentifier - Network identifier (name, alias, or chain ID) to get address for
      * @returns Contract address string
      * @throws Error if address not found in config
      * @private
      */
-    private getWTTPAddress(networkName: string): string {
+    private getWTTPAddress(networkIdentifier: string): string {
         const configPath = path.join(__dirname, 'wttp.config.json');
         try {
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            
+            // Resolve the network name using the provider manager
+            let networkName;
+            try {
+                networkName = this.providerManager.resolveNetworkName(networkIdentifier);
+            } catch (error) {
+                throw new Error(`Unknown network identifier: ${networkIdentifier}`);
+            }
+            
             const networkConfig = config.networks[networkName];
             if (networkConfig && networkConfig.contracts.wttpAddress) {
                 return networkConfig.contracts.wttpAddress;
             } else {
-                throw new Error(`WTTP address not found for network: ${networkName}`);
+                throw new Error(`WTTP address not found for network: ${networkName} (from identifier: ${networkIdentifier})`);
             }
         } catch (error) {
             if (error instanceof Error) {

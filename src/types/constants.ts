@@ -24,21 +24,41 @@ export type SupportedNetworks =
     'sepolia' | '11155111' | 'seth' | 
     'ethereum' | '1' | 'eth' |
     'base' | '8453' | 'beth' |
-    'polygon' | '137' | 'pol';
+    'polygon' | '137' | 'pol' |
+    'fantom' | '250' | 'ftm' |
+    'optimism' | '10' | 'op' |
+    'arbitrum' | '42161' | 'arb' |
+    'avalanche' | '43114' | 'avax' |
+    'aves' | '33333' | 'aves';
 
 export const NETWORK_ALIASES = {
+    // Hardhat & localhost
     '1337': 'hardhat',
     'hre': 'hardhat',
     '31337': 'localhost',
     'local': 'localhost',
+    
+    // Ethereum & testnets
     '11155111': 'sepolia',
     'seth': 'sepolia',
     '1': 'ethereum',
     'eth': 'ethereum',
+    
+    // L2s & sidechains
     '8453': 'base',
     'beth': 'base',
     '137': 'polygon',
-    'pol': 'polygon'
+    'pol': 'polygon',
+    '250': 'fantom',
+    'ftm': 'fantom',
+    '10': 'optimism',
+    'op': 'optimism',
+    '42161': 'arbitrum',
+    'arb': 'arbitrum',
+    '43114': 'avalanche',
+    'avax': 'avalanche',
+    '33333': 'aves',
+    'aves': 'aves'
 } as const;
 
 // MIME Types
