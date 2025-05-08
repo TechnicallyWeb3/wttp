@@ -50,11 +50,14 @@ export class ProviderManager {
      */
     public getRpcUrl(network: SupportedNetworks) {
         // TODO: Create a RPC URL manager to rank the RPC URLs so the best one is always at index 0
-        const rpcUrl = this.config.networks[network].rpcUrls?.[0];
-        if (!rpcUrl) {
-            throw new Error(`No RPC URL found for network ${network}`);
+        const networkConfig = this.config.networks[network];
+        if (networkConfig && networkConfig.rpcUrls && networkConfig.rpcUrls.length > 0) {
+            return networkConfig.rpcUrls[0];
         }
-        return rpcUrl;
+        if (network == "localhost" || network == "hardhat") {
+            return "http://localhost:8545";
+        }
+        throw new Error(`No RPC URL found for network ${network}`);
     }
 
     /**
@@ -63,7 +66,8 @@ export class ProviderManager {
      * @returns Provider instance for the network
      */
     public getProvider(network: SupportedNetworks) {
-        this.provider = new ethers.JsonRpcProvider(this.getRpcUrl(network), this.config.networks[network].chainId);
+        const chainId = network == "localhost" || network == "hardhat" ? 31337 : this.config.networks[network].chainId;
+        this.provider = new ethers.JsonRpcProvider(this.getRpcUrl(network), chainId);
         return this.provider;
     }
 }

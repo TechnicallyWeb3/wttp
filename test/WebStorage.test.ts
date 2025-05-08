@@ -75,6 +75,7 @@ describe("WebStorage", function () {
             dataPointRegistry = await DataPointRegistry.deploy(
                 await dataPointStorage.getAddress(),
                 tw3.address,
+                ethers.parseUnits("0.001", "gwei"),
                 {
                     ...gasPrice
                 }

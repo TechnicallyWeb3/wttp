@@ -64,8 +64,9 @@ describe("WebContract (WTTP/2.0)", function () {
             dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
         } else {
             dataPointRegistry = await DataPointRegistry.deploy(
-                await dataPointStorage.getAddress(),
+                dataPointStorage.target,
                 tw3.address,
+                ethers.parseUnits("0.001", "gwei"),
                 {
                     ...gasPrice
                 }

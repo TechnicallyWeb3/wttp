@@ -8,7 +8,8 @@ import {
     CHARSET_STRINGS, 
     LANGUAGE_STRINGS, 
     LOCATION_STRINGS, 
-    DEFAULT_HEADER
+    DEFAULT_HEADER,
+    SupportedNetworks
 } from '../src/types/constants';
 import hre from 'hardhat';
 import { contractManager } from '../lib/contractManager';
@@ -57,13 +58,13 @@ describe('WTTPHandler', () => {
         
         if (existingWTTPAddress) {
             console.log("Loading existing WTTP at:", existingWTTPAddress);
-            wttp = WTTP.attach(existingWTTPAddress) as WTTP;
+            wttp = WTTP.attach(existingWTTPAddress);
         } else {
             gasPrice = await estimateGas();
             wttp = await WTTP.deploy({
                 maxFeePerGas: gasPrice.maxFeePerGas,
                 maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            }) as WTTP;
+            });
             await wttp.waitForDeployment();
             contractManager.saveContract('wttp', await wttp.getAddress());
             console.log("WTTP deployed at:", await wttp.getAddress());
@@ -95,10 +96,15 @@ describe('WTTPHandler', () => {
             dataPointRegistry = DataPointRegistry.attach(existingDPRAddress);
         } else {
             gasPrice = await estimateGas();
-            dataPointRegistry = await DataPointRegistry.deploy(dataPointStorage.target, tw3.address, {
-                maxFeePerGas: gasPrice.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
-            });
+            dataPointRegistry = await DataPointRegistry.deploy(
+                dataPointStorage.target, 
+                tw3.address, 
+                ethers.parseUnits("0.001", "gwei"),
+                {
+                    maxFeePerGas: gasPrice.maxFeePerGas,
+                    maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas
+                }
+            );
             await dataPointRegistry.waitForDeployment();
             contractManager.saveContract('dataPointRegistry', await dataPointRegistry.getAddress());
             console.log("DataPointRegistry deployed at:", await dataPointRegistry.getAddress());
@@ -119,7 +125,7 @@ describe('WTTPHandler', () => {
         }
 
         // Initialize handler with deployed contracts
-        handler = new WTTPHandler(wttp.target, tw3, hre.network.name);
+        handler = new WTTPHandler(wttp.target, tw3, hre.network.name as SupportedNetworks);
     });
 
     describe('Header Parsing', () => {
@@ -434,8 +440,8 @@ describe('WTTPHandler', () => {
     });
 
     describe('royalty handling', () => {
-        let site1: WTTPSite;
-        let site2: WTTPSite;
+        let site1: any;
+        let site2: any;
 
         async function setupSites() {
 

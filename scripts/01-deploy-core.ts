@@ -35,7 +35,7 @@ async function main() {
         dataPointRegistry = await dprWithSigner.deploy(
             dataPointStorage.target,
             "0xC6266149f988448b540899A91A0339Db67742e27",
-            ethers.parseUnits("0.001", "gwei")
+            ethers.parseUnits("0.001", "gwei")  // 10000000000n
         );
         // SETH 10000000000 / 10 gwei //
         // ETH 15000000 / 0.015 gwei //
