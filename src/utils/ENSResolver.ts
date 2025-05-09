@@ -1,5 +1,6 @@
 // ENSResolver.ts
 import { ethers } from 'ethers';
+import { ProviderManager } from './ProviderManager';
 
 export class ENSResolver {
     async resolve(host: string): Promise<string> {
@@ -8,10 +9,18 @@ export class ENSResolver {
             return host;
         }
 
+        const providerManager = new ProviderManager();
+
         // If the host is an ENS name, resolve it
         if (host.endsWith('.eth')) {
-            const provider = new ethers.JsonRpcProvider('https://eth.public-rpc.com');
-            return await provider.resolveName(host) || host;
+
+            const rpcUrl = providerManager.getRpcUrl('ethereum');
+            const provider = new ethers.JsonRpcProvider(rpcUrl);
+            const resolved = await provider.resolveName(host);
+            if (resolved) {
+                return resolved;
+            }
+            throw new Error(`Failed to resolve ENS name ${host}`);
         }
 
         return host;
